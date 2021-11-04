@@ -535,7 +535,7 @@ static void createSwapChain()
     VkExtent2D extent = chooseSwapChainExtent();
 
     //how many images are in the swapChain. we will get one more than the min to allow for triple buffer.
-    uint32_t maxImageCount = vulkanBE.swapChainDetails.surfaceCapabilities.minImageCount; // if 0, it is limitless.
+    uint32_t maxImageCount = vulkanBE.swapChainDetails.surfaceCapabilities.minImageCount+1; // if 0, it is limitless.
 
     if(maxImageCount > vulkanBE.swapChainDetails.surfaceCapabilities.maxImageCount && maxImageCount > 0){
         maxImageCount = vulkanBE.swapChainDetails.surfaceCapabilities.maxImageCount;
@@ -872,8 +872,8 @@ static void createGraphicsPipeline(VkPolygonMode flag)
 {
 
     //read in SPIR-V Code
-    struct ShaderCode vertexShaderCode = readSPRVFile("C:/Users/hlahm/Documents/gitProjects/SimpleEngine/source/shader/vert.spv");
-    struct ShaderCode fragShaderCode = readSPRVFile("C:/Users/hlahm/Documents/gitProjects/SimpleEngine/source/shader/frag.spv");
+    struct ShaderCode vertexShaderCode = readSPRVFile("C:/Users/Hamza/Documents/gitProjects/SimpleEngine/source/shader/vert.spv");
+    struct ShaderCode fragShaderCode = readSPRVFile("C:/Users/Hamza/Documents/gitProjects/SimpleEngine/source/shader/frag.spv");
 
     //Build shader Modules to link to graphics pipeline
     VkShaderModule vertexShaderModule = createShaderModule(&vertexShaderCode);
@@ -1428,7 +1428,7 @@ static stbi_uc* loadTextureFile(char* filename, int* width, int* height, VkDevic
 
     //load pixel data for image
     char fileLoc[80] = {};
-    strcat(strcat(fileLoc, "../assets/textures/"), filename);
+    strcat(strcat(fileLoc, "C:/Users/Hamza/Documents/gitProjects/SimpleEngine/assets/textures/"), filename);
     stbi_uc * image = stbi_load(fileLoc, width, height, &channels, STBI_rgb_alpha);
 
     if (!image)

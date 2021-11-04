@@ -47,7 +47,7 @@ static struct ShaderCode readSPRVFile(const char* filename)
     fp = fopen( filename, "rb");
 
     if(fp == NULL){
-        fprintf(stderr,"Failed to open SPR-V file\n");
+        fprintf(stderr,"Failed to open SPR-V file at location: %s\n",filename);
         exit(1);
     }
 
