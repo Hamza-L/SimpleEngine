@@ -5,7 +5,7 @@
 #ifndef VULKANENGINE2_VE_RENDERER_H
 #define VULKANENGINE2_VE_RENDERER_H
 
-
+#include "kb_input.cpp"
 #include "../vulkan-backend/ve_backend.cpp"
 
 struct Ve_renderer{

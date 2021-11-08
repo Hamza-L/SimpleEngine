@@ -86,19 +86,24 @@ static void imGuiParametersSetup() {
     ImGui::End();
 }
 
-static void create_texture(struct MeshObject* obj, char* filename)
+static void create_texture(struct MeshObject* obj, char* filename, char* normFilename)
 {
     //create texture Image then store it's index array
-    int textureImageLoc = create_texture_image(filename);
+    int textureImageLoc = create_texture_image(filename, normFilename);
 
     //create texture image view
+    int descriptorLoc = -1;
+
     allTextures[textureImageLoc].textureImageView = createImageView(allTextures[textureImageLoc].textureImage, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+    allTextures[textureImageLoc].normTextureImageView = createImageView(allTextures[textureImageLoc].normTextureImage, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+    descriptorLoc = createTextureDescriptor(allTextures[textureImageLoc].textureImageView, allTextures[textureImageLoc].normTextureImageView);
 
     //TODO:create descriptor set here
-    int descriptorLoc = createTextureDescriptor(allTextures[textureImageLoc].textureImageView);
 
-    obj->textureID = descriptorLoc;
+    obj->textureID = textureImageLoc;
     obj->pObj.isTex = 1;
+
+    if(strlen(normFilename) != 0){obj->pObj.isNormTex = 1;}
 }
 
 static void loadModels()
@@ -111,23 +116,22 @@ static void loadModels()
             40,
             glm::vec3(0.4f,0.4f,0.4f),
             glm::vec3(0.2f,0.2f,0.2f));
-    struct MeshObject cubeObj = cube(glm::translate(glm::mat4(1.5f),(vec3){0.0f,1.5f,0.0f}), (vec3){1.0f,0.0f,1.0f});
-    struct MeshObject plane1 = plane(glm::translate(glm::mat4(1.5f),(vec3){0.0f,1.0f,0.0f}), (vec3){1.0f,0.8f,0.0f});
-    struct MeshObject icosa2 = icosahedron(glm::translate(glm::mat4(1.0f),(vec3){0.0f,0.0f,0.0f}), (vec3){0.8f,0.6f,0.0f},10);
-    //icosa2.pObj.M[3][1]+=2;
+    struct MeshObject sph = sphere(GLM_MAT4_IDENTITY, {1.0f,1.0f,1.0f}, 50);
+    struct MeshObject cube1 = cube(GLM_MAT4_IDENTITY,{0.9f,0.8f,0.0f});
 
-    //icosa.pipelineFlag = 1;
-    //plane1.pipelineFlag = 1;
-    create_texture(&plane1, (char*)"giraffe.jpg");
-    create_texture(&icosa2, (char*)"giraffe.jpg");
+    //envM.pObj.M = glm::scale(glm::mat4(1.0f),vec3(10.0f));
+    //envM.pObj.isEnvMap = 1;
+    cube1.pObj.M = glm::translate(glm::mat4(1.0f), vec3(0.0f,1.0f,0.0f));
+    //sph.pObj.M = glm::translate(glm::mat4(1.0f), vec3(0.0f,2.0f,0.0f));
 
-    checkerBoard.textureID = 0;
-    cubeObj.textureID = 0;
-    cubeObj.pObj.isTex = 1;
+    create_texture(&cube1, (char*)"giraffe.jpg",(char*)"");
+    create_texture(&sph, (char*)"enhanced_moon.jpg", (char*)"enhanced_moon.png");
 
     //add objects to the object list
     //object_list.push_back(checkerBoard);
-    object_list.push_back(icosa2);
+    object_list.push_back(sph);
+    //object_list.push_back(checkerBoard);
+    //object_list.push_back(envM);
 
 }
 
@@ -138,7 +142,7 @@ static void loadCameras()
     struct Camera cam1 = {};
 
     cam1.projection = glm::perspective(glm::radians(50.0f), aspectRatio, 0.1f, 100.0f);
-    cam1.view = glm::lookAt(glm::vec3(0.0f,3.0f,6.0f), glm::vec3(0.0f), glm::vec3(0.0f,1.0f,0.0f));
+    cam1.view = glm::lookAt(glm::vec3(-2.0f,4.0f,8.0f), glm::vec3(0.0f), glm::vec3(0.0f,1.0f,0.0f));
 
     //cam1.projection[1][1] *= -1; //we need to infer the y coordinate because vulkan
     camera_list.push_back(cam1);
@@ -296,23 +300,153 @@ static void updateUniformBuffers(uint32_t imgIndex)
     vkUnmapMemory(vulkanBE.mainDevices.device, vulkanBE.descriptors.light_UBM[imgIndex]);
 }
 
-static void updateModel()
+static glm::vec3 getVectorFromMouse(double xPos, double yPos) {
+
+    //std::cout<<"["<<xPos<<","<<yPos<<"]"<<std::endl;
+
+    float width = (float)vulkanBE.imageInfo.extent.width;
+    float height = (float)vulkanBE.imageInfo.extent.height;
+    float centerX = width/2.0f;
+    float centerY = height/2.0f;
+    float radius = glm::min(width,height)/2*FIT;
+
+    glm::vec3 pt(0.0f);
+    pt.x = ((float)xPos-centerX);
+    pt.y = (centerY - (float)yPos);
+    float ptLen = glm::length(pt);
+
+    if(ptLen>radius){
+        pt = glm::normalize(pt);
+    } else {
+        pt.z = glm::sqrt(radius*radius - ptLen*ptLen);
+        pt = glm::normalize(pt);
+    }
+
+    return pt;
+}
+
+static void updateModel(int indx)
 {
+    double dot;
+    double angle;
+    glm::vec3 Axis;
+    glm::mat4 VInv = glm::inverse(camera_list[0].view);
+    glm::mat4 R = GLM_MAT4_IDENTITY;
 
-    float angle = 0.0f;
-    float deltaTime;
-    auto now = (float)glfwGetTime();
+    if(MPRESS_L && MFLAG_L){
+        MFLAG_L = false;
+        //view = glm::mat4(uboVP.V);
+        double xPosInit,yPosInit;
+        glfwGetCursorPos(ve_window.window,&xPosInit,&yPosInit);
+        glm::vec4 temp1 = VInv * glm::vec4(getVectorFromMouse(xPosInit,yPosInit),0.0f);
+        mouseInit = normalize(glm::vec3(temp1.x,temp1.y,temp1.z));
+    }
 
-    angle = now;
-    if(angle>=360.0f){angle-=360.0f;}
+    if(MPRESS_L){
+        double xPosCurr,yPosCurr;
+        glm::mat4 Mmodel = object_list[indx].pObj.M;
+        glfwGetCursorPos(ve_window.window,&xPosCurr,&yPosCurr);
 
-    mat4 model = GLM_MAT4_IDENTITY_INIT;
-    //glm_translate(model, (vec3){0.0f,sin(angle),0.0f});
-    model = glm::rotate(model, angle, glm::vec3(0.0f,1.0f,0.0f));
-    //model = glm::rotate(model, angle * 0.7f, glm::vec3(0.0f,1.0f,0.0f));
-    object_list[0].pObj.M = model;
-    //glm_mat4_copy(model, object_list.objects[0].pObj.M);
-    //glm_mat4_copy(model, object_list.objects[1].pObj.M);
+        glm::vec4 temp = VInv * glm::vec4(getVectorFromMouse(xPosCurr,yPosCurr),0.0f);
+        mouseCurr = glm::normalize(glm::vec3(temp.x,temp.y,temp.z));
+        //std::cout<<"mouseCurr: "<<mouseCurr.x<<" "<<mouseCurr.y<<" "<<mouseCurr.z<<std::endl;
+
+        //std::cout<<glm::length(glm::vec3(mouseCurr - mouseInit))<<std::endl;
+
+        if(glm::length(glm::vec3(mouseCurr - mouseInit)) < 1E-05){
+            //std::cout<<"do nothing"<<std::endl;
+        } else {
+
+            Axis = glm::cross(mouseInit, mouseCurr);
+
+            dot = glm::dot(mouseInit, mouseCurr);
+            if(dot>1) {dot = 1;}
+            angle = glm::acos(dot) * GAIN;
+
+            R = glm::translate(glm::rotate(glm::translate(glm::mat4(1.0f),vec3(Mmodel[3][0],Mmodel[3][1],Mmodel[3][2])), (float)angle, Axis),vec3(-Mmodel[3][0],-Mmodel[3][1],-Mmodel[3][2]));
+            //std::cout<<"mouse curr: ["<<mouseCurr.x<<","<<mouseCurr.y<<","<<mouseCurr.z<<"], "<<"mouse init: ["<<mouseInit.x<<","<<mouseInit.y<<","<<mouseInit.z<<"], "<<angle<<std::endl;
+
+            object_list[indx].pObj.M = R * Mmodel;
+            //modelList[modelList.size()-1]->setModel(R * Mmodel);
+            //glm::mat4 tempV = glm::translate(glm::mat4(1.0f),glm::vec3(glm::inverse(uboVP.V)[3][0],glm::inverse(uboVP.V)[3][1],glm::inverse(uboVP.V)[3][2]));
+
+            //uboVP.V = uboVP.V * glm::inverse(R);
+            //uboVP.V = uboVP.V * glm::rotate(glm::mat4(1.0f), (float)angle, Axis);
+            mouseInit = mouseCurr;
+        }
+    } else {
+        object_list[indx].pObj.M =  glm::rotate(glm::mat4(1.0f), 0.0005f,glm::vec3(0.0f,1.0f,0.0f)) * object_list[indx].pObj.M;
+        //NOT THE SAME AS = glm::rotate(object_list[indx].pObj.M, 0.001f,glm::vec3(0.0f,1.0f,0.0f))
+    }
+}
+
+static void updateCamera(int indx)
+{
+    double dot;
+    double angle;
+    glm::vec3 Axis;
+    glm::mat4 VInv = glm::inverse(camera_list[indx].view);
+
+
+    if(MPRESS_R && MFLAG_R){
+        MFLAG_R = false;
+        double xPosInit,yPosInit;
+        glfwGetCursorPos(ve_window.window,&xPosInit,&yPosInit);
+
+        glm::vec4 temp1 = VInv * glm::vec4(getVectorFromMouse(xPosInit,yPosInit),0.0f);
+        mouseInit = normalize(glm::vec3(temp1.x,temp1.y,temp1.z));
+    }
+
+    if(MPRESS_R){
+        double xPosCurr,yPosCurr;
+        glfwGetCursorPos(ve_window.window,&xPosCurr,&yPosCurr);
+
+        glm::vec4 temp = VInv * glm::vec4(getVectorFromMouse(xPosCurr,yPosCurr),0.0f);
+        mouseCurr = glm::normalize(glm::vec3(temp.x,temp.y,temp.z));
+
+        if(glm::length(glm::vec3(mouseCurr - mouseInit)) < 1E-05){
+            //std::cout<<"do nothing"<<std::endl;
+        } else {
+
+            Axis = glm::cross(mouseInit, mouseCurr);
+
+            dot = glm::dot(mouseInit, mouseCurr);
+            if(dot>1) {dot = 1;}
+            angle = glm::acos(dot);
+
+            camera_list[indx].view =  glm::rotate(camera_list[indx].view, (float)angle, Axis);
+        }
+    }
+
+    if(MPRESS_M && MFLAG_M){
+        MFLAG_M = false;
+        double xPosInit,yPosInit;
+        glfwGetCursorPos(ve_window.window,&xPosInit,&yPosInit);
+
+        glm::vec4 temp1 = VInv * glm::vec4(getVectorFromMouse(xPosInit,yPosInit),0.0f);
+        mouseInit = normalize(glm::vec3(temp1.x,temp1.y,temp1.z));
+    }
+
+    if(MPRESS_M){
+        double xPosCurr,yPosCurr;
+        glfwGetCursorPos(ve_window.window,&xPosCurr,&yPosCurr);
+
+        glm::vec4 temp = VInv * glm::vec4(getVectorFromMouse(xPosCurr,yPosCurr),0.0f);
+        mouseCurr = glm::normalize(glm::vec3(temp.x,temp.y,temp.z));
+
+        if(glm::length(glm::vec3(mouseCurr - mouseInit)) < 1E-05){
+            //std::cout<<"do nothing"<<std::endl;
+        } else {
+
+            glm::vec3 mouseDiff = mouseCurr - mouseInit;
+            mouseInit = mouseCurr;
+
+            camera_list[indx].view =  glm::translate(camera_list[indx].view, mouseDiff * 5.0f);
+        }
+    }
+
+    float aspectRatio = (float)vulkanBE.imageInfo.extent.width/(float)vulkanBE.imageInfo.extent.height;
+    camera_list[indx].projection = glm::perspective(glm::radians(50.0f - scroll), aspectRatio, 0.1f, 100.0f);
 }
 
 static void destroyVertexBuffer(struct MeshObject* meshObj)
@@ -401,6 +535,7 @@ static void recordCommand(uint32_t currentImage){
             vkCmdBindDescriptorSets(vulkanBE.commandBuffers[currentImage], VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanBE.pipelineLayout[object_list[j].pipelineFlag], 0, numDescriptorSet, descriptorSetGroup, 0, nullptr);
 
             //number of times to draw/run the shader/pipeline.
+            //vkCmdDraw(vulkanBE.commandBuffers[currentImage],object_list[j].vertices.size(), 1, 0, 0);
             vkCmdDrawIndexed(vulkanBE.commandBuffers[currentImage], object_list[j].indices.size(), 1, 0, 0, 0);
         }
 
@@ -488,7 +623,13 @@ static void run(){
 
         gui.draw_data = ImGui::GetDrawData();
 
-        updateModel();
+        //keyboard input
+        glfwSetKeyCallback(ve_window.window,key_callback);
+        glfwSetMouseButtonCallback(ve_window.window, mouse_callback);
+        glfwSetScrollCallback(ve_window.window, scroll_callback);
+
+        updateModel(0);
+        updateCamera(0);
         //updateCameraModel(0, model);
 
         draw();

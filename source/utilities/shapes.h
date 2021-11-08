@@ -23,6 +23,8 @@ struct Material{
 struct PushObj{
     mat4 M = GLM_MAT4_IDENTITY;
     float isTex = 0;
+    float isNormTex = 0;
+    float isEnvMap = 0;
 };
 
 struct MeshObject{
@@ -363,6 +365,170 @@ static struct MeshObject icosahedron(mat4 model, vec3 color, int subdivisions)
     //for(int h = 0; h<vertices.size(); h++){
     //    std::cout<<"["<<vertices[h].position.x<<","<<vertices[h].position.y<<","<<vertices[h].position.z<<"]"<<std::endl;
     //}
+}
+
+static vec3 getSphericalCoord(float horiz_angle, float vert_angle, float radius)
+{
+    vec3 coord;
+    coord.x = (radius * cos(vert_angle+(M_PI/2.0f))) * sin(horiz_angle);
+    coord.y = radius * sin(vert_angle+(M_PI/2.0f));
+    coord.z = (radius * cos(vert_angle+(M_PI/2.0f))) * cos(horiz_angle);
+    return coord;
+}
+
+static struct MeshObject envMap(mat4 model, vec3 color, int subdivisions)
+{
+    struct MeshObject sphereObj = {};
+
+    float angleStep = 2.0f*M_PI/(float)subdivisions;
+
+    Vertex v1 = {};
+    v1.position = getSphericalCoord(0, 0, 1);
+    v1.normal = -v1.position;
+    v1.color = color;
+    v1.texCoord = getUVCoord(-v1.normal);;
+    sphereObj.vertices.push_back(v1);
+
+    for(int i=1; i<subdivisions; i++)
+    {
+        for(int j=0; j<subdivisions+1; j++)
+        {
+            Vertex v = {};
+            v.position = getSphericalCoord(angleStep*j, angleStep*i*0.5f, 1);
+            v.normal = -v.position;
+            v.color = color;
+            v.texCoord = getUVCoord(-v.normal);
+            if(j==0){v.texCoord.x = 0;}
+            else if(j==subdivisions){v.texCoord.x = 1;}
+
+            //printf("position is: (%f,%f,%f)\n",v.position.x,v.position.y,v.position.z);
+            sphereObj.vertices.push_back(v);
+
+            if(j==0)
+            {
+                for(int k = 0; k < subdivisions; k++)
+                {
+                    sphereObj.indices.push_back((k % subdivisions) + 1);
+                    sphereObj.indices.push_back((k % subdivisions) + 2);
+                    sphereObj.indices.push_back(0);
+                }
+            } else if (j==subdivisions-1)
+            {
+                for(int k = 0; k < subdivisions; k++)
+                {
+                    int offset = 1 + ( (subdivisions-2) * (subdivisions + 1) );
+                    sphereObj.indices.push_back((k % subdivisions) + offset +1);
+                    sphereObj.indices.push_back((k % subdivisions) + offset);
+                    sphereObj.indices.push_back(offset + subdivisions + 1);
+                }
+            } else
+            {
+                for(int k = 0; k < subdivisions; k++)
+                {
+                    int row_offset = 1 + ( (j-1) * (subdivisions + 1) );
+                    int next_row = 1 + ( (j) * (subdivisions + 1) );
+
+                    sphereObj.indices.push_back((k % subdivisions) + next_row);
+                    sphereObj.indices.push_back((k % subdivisions) + row_offset +1);
+                    sphereObj.indices.push_back((k % subdivisions) + row_offset);
+
+                    sphereObj.indices.push_back((k % subdivisions) + row_offset + 1);
+                    sphereObj.indices.push_back((k % subdivisions) + next_row);
+                    sphereObj.indices.push_back((k % subdivisions) + next_row + 1);
+
+                }
+            }
+        }
+    }
+
+    Vertex vEnd = {};
+    vEnd.position = getSphericalCoord(0, M_PI, 1);
+    vEnd.normal = -vEnd.position;
+    vEnd.color = color;
+    vEnd.texCoord = getUVCoord(-vEnd.normal);
+    sphereObj.vertices.push_back(vEnd);
+
+    return sphereObj;
+}
+
+static struct MeshObject sphere(mat4 model, vec3 color, int subdivisions)
+{
+    struct MeshObject sphereObj = {};
+
+    float angleStep = 2.0f*M_PI/(float)subdivisions;
+
+    Vertex v1 = {};
+    v1.normal = getSphericalCoord(0, 0, 1);
+    vec4 temp = model * vec4(v1.normal,1.0f);
+    v1.position = vec3(temp.x,temp.y,temp.z);
+    v1.color = color;
+    v1.texCoord = getUVCoord(v1.normal);;
+    sphereObj.vertices.push_back(v1);
+
+    int i = 0;
+    for(int i=1; i<subdivisions; i++)
+    {
+        for(int j=0; j<subdivisions+1; j++)
+        {
+            Vertex v = {};
+            v.normal = getSphericalCoord(angleStep*j, angleStep*i*0.5f, 1);
+            temp = model * vec4(v.normal,1.0f);
+            v.position = vec3(temp.x,temp.y,temp.z);
+            v.color = color;
+            v.texCoord = getUVCoord(v.normal);
+            if(j==0){v.texCoord.x = 0;}
+            else if(j==subdivisions){v.texCoord.x = 1;}
+
+            //printf("position is: (%f,%f,%f)\n",v.position.x,v.position.y,v.position.z);
+            sphereObj.vertices.push_back(v);
+
+            if(j==0)
+            {
+                for(int k = 0; k < subdivisions; k++)
+                {
+                    sphereObj.indices.push_back((k % subdivisions) + 1);
+                    sphereObj.indices.push_back(0);
+                    sphereObj.indices.push_back((k % subdivisions) + 2);
+                }
+            } else if (j==subdivisions-1)
+            {
+                for(int k = 0; k < subdivisions; k++)
+                {
+                    int offset = 1 + ( (subdivisions-2) * (subdivisions + 1) );
+                    sphereObj.indices.push_back((k % subdivisions) + offset +1);
+                    sphereObj.indices.push_back(offset + subdivisions + 1);
+                    sphereObj.indices.push_back((k % subdivisions) + offset);
+                }
+            } else
+            {
+                for(int k = 0; k < subdivisions; k++)
+                {
+                    int row_offset = 1 + ( (j-1) * (subdivisions + 1) );
+                    int next_row = 1 + ( (j) * (subdivisions + 1) );
+
+                    sphereObj.indices.push_back((k % subdivisions) + next_row);
+                    sphereObj.indices.push_back((k % subdivisions) + row_offset);
+                    sphereObj.indices.push_back((k % subdivisions) + row_offset +1);
+
+                    sphereObj.indices.push_back((k % subdivisions) + row_offset + 1);
+                    sphereObj.indices.push_back((k % subdivisions) + next_row + 1);
+                    sphereObj.indices.push_back((k % subdivisions) + next_row);
+
+                }
+            }
+        }
+    }
+
+    Vertex vEnd = {};
+    vEnd.normal = getSphericalCoord(0, M_PI, 1);
+    temp = model * vec4(vEnd.normal,1.0f);
+    vEnd.position = vec3(temp.x,temp.y,temp.z);
+    vEnd.color = color;
+    vEnd.texCoord = getUVCoord(vEnd.normal);
+    sphereObj.vertices.push_back(vEnd);
+
+
+    return sphereObj;
 }
 
 static struct MeshObject ObjImporter(const std::string& fileName, glm::vec4 colour){

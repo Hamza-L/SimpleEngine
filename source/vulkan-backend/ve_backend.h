@@ -26,9 +26,10 @@
 #include "../utilities/shapes.h"
 
 
-enum { MAX_INSTANCE_EXTENSIONS = 64, MAX_DEVICE_EXTENSIONS = 64, MAX_SURFACE_FORMATS = 64, MAX_PRESENTATION_MODE = 12 , MAX_IMAGE = 3, MAX_FRAME_DRAWS = 2, MAX_PIPELINES = 3, MAX_TEXTURES = 100};
+enum { MAX_INSTANCE_EXTENSIONS = 64, MAX_DEVICE_EXTENSIONS = 64, MAX_SURFACE_FORMATS = 64, MAX_PRESENTATION_MODE = 12 , MAX_IMAGE = 3, MAX_FRAME_DRAWS = 3, MAX_PIPELINES = 3, MAX_TEXTURES = 100};
 
 static int currentFrame = 0;
+static glm::vec3 mouseInit{}, mouseCurr{};
 
 static void check_vk_result(VkResult err)
 {
@@ -108,6 +109,10 @@ struct Texture{
     VkImage textureImage;
     VkDeviceMemory textureImageMemory;
     VkImageView textureImageView;
+
+    VkImage normTextureImage;
+    VkDeviceMemory normTextureImageMemory;
+    VkImageView normTextureImageView;
 };
 
 struct Ve_backend{

@@ -846,11 +846,20 @@ static void createDescriptorSetLayout()
     samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     samplerLayoutBinding.pImmutableSamplers = nullptr; //for texture. can make the sampler immutable
 
+    VkDescriptorSetLayoutBinding normalSamplerLayoutBinding = {};
+    normalSamplerLayoutBinding.binding = 1; //binding point in shader (designated by binding number in fragment shader) (set = 1, binding = 0)
+    normalSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; //type of descriptor (uniform, dynamic, texture etc..)
+    normalSamplerLayoutBinding.descriptorCount = 1; //number of descriptor for binding
+    normalSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    normalSamplerLayoutBinding.pImmutableSamplers = nullptr; //for texture. can make the sampler immutable
+
+    VkDescriptorSetLayoutBinding samplerLayoutBindings[] = {samplerLayoutBinding, normalSamplerLayoutBinding};
+
     //create sampler Descriptor Set Layout with given bindings
     VkDescriptorSetLayoutCreateInfo textureDescriptorSetLayoutCreateInfo = {};
     textureDescriptorSetLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    textureDescriptorSetLayoutCreateInfo.bindingCount = 1;
-    textureDescriptorSetLayoutCreateInfo.pBindings = &samplerLayoutBinding;
+    textureDescriptorSetLayoutCreateInfo.bindingCount = 2;
+    textureDescriptorSetLayoutCreateInfo.pBindings = samplerLayoutBindings;
 
     //create descriptor set layout
     result = vkCreateDescriptorSetLayout(vulkanBE.mainDevices.device, &textureDescriptorSetLayoutCreateInfo, nullptr, &vulkanBE.descriptors.samplerSetLayout);
@@ -868,12 +877,12 @@ static void createPushConstantRange()
     vulkanBE.descriptors.pushConstantRange.size = sizeof(struct PushObj);
 }
 
-static void createGraphicsPipeline(VkPolygonMode flag)
+static void createGraphicsPipeline(VkPolygonMode flag, VkPrimitiveTopology topology)
 {
 
     //read in SPIR-V Code
-    struct ShaderCode vertexShaderCode = readSPRVFile("C:/Users/Hamza/Documents/gitProjects/SimpleEngine/source/shader/vert.spv");
-    struct ShaderCode fragShaderCode = readSPRVFile("C:/Users/Hamza/Documents/gitProjects/SimpleEngine/source/shader/frag.spv");
+    struct ShaderCode vertexShaderCode = readSPRVFile("source/shader/vert.spv");
+    struct ShaderCode fragShaderCode = readSPRVFile("source/shader/frag.spv");
 
     //Build shader Modules to link to graphics pipeline
     VkShaderModule vertexShaderModule = createShaderModule(&vertexShaderCode);
@@ -941,7 +950,7 @@ static void createGraphicsPipeline(VkPolygonMode flag)
     //input assembly (how to assemble the input into primitive shapes).
     VkPipelineInputAssemblyStateCreateInfo inputAssembly = {};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST; //primitive type to assemble vertices
+    inputAssembly.topology = topology; //primitive type to assemble vertices
     inputAssembly.primitiveRestartEnable = VK_FALSE; //allow overriding of strip topology to start new primitive.
 
     //viewport and scissor
@@ -1253,7 +1262,7 @@ static void createTextureSampler()
     }
 }
 
-static int createTextureDescriptor(VkImageView textureImageView)
+static int createTextureDescriptor(VkImageView textureImageView, VkImageView normalTextureImageView)
 {
 
     VkDescriptorSet descriptorSet;
@@ -1272,10 +1281,21 @@ static int createTextureDescriptor(VkImageView textureImageView)
         exit(1);
     }
 
+    VkDescriptorImageInfo imageInfos[2] = {};
+    uint32_t numImageInfos = 2;
+
     VkDescriptorImageInfo imageInfo = {};
     imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; //what is the image layout when in use
     imageInfo.imageView = textureImageView;
     imageInfo.sampler = vulkanBE.textureSampler;
+
+    VkDescriptorImageInfo normalimageInfo = {};
+    normalimageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; //what is the image layout when in use
+    normalimageInfo.imageView = normalTextureImageView;
+    normalimageInfo.sampler = vulkanBE.textureSampler;
+
+    imageInfos[0] = imageInfo;
+    imageInfos[1] = normalimageInfo;
 
     //descriptor write info
     VkWriteDescriptorSet descriptorWrite = {};
@@ -1284,8 +1304,8 @@ static int createTextureDescriptor(VkImageView textureImageView)
     descriptorWrite.dstBinding = 0;
     descriptorWrite.dstArrayElement = 0;
     descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    descriptorWrite.descriptorCount = 1;
-    descriptorWrite.pImageInfo = &imageInfo;
+    descriptorWrite.descriptorCount = numImageInfos;
+    descriptorWrite.pImageInfo = imageInfos;
 
     vkUpdateDescriptorSets(vulkanBE.mainDevices.device, 1, &descriptorWrite, 0, nullptr);
 
@@ -1428,7 +1448,7 @@ static stbi_uc* loadTextureFile(char* filename, int* width, int* height, VkDevic
 
     //load pixel data for image
     char fileLoc[80] = {};
-    strcat(strcat(fileLoc, "C:/Users/Hamza/Documents/gitProjects/SimpleEngine/assets/textures/"), filename);
+    strcat(strcat(fileLoc, "assets/textures/"), filename);
     stbi_uc * image = stbi_load(fileLoc, width, height, &channels, STBI_rgb_alpha);
 
     if (!image)
@@ -1445,12 +1465,12 @@ static stbi_uc* loadTextureFile(char* filename, int* width, int* height, VkDevic
     return image;
 }
 
-static int create_texture_image(char* fileName)
+static int create_texture_image(char* fileName, char* normFileName)
 {
     //load in the image file
-    int width, height;
+    int width1, height1;
     VkDeviceSize imageSize;
-    stbi_uc* imageData = loadTextureFile(fileName, &width, &height, &imageSize);
+    stbi_uc* imageData = loadTextureFile(fileName, &width1, &height1, &imageSize);
 
     //create staging buffer to hold loaded data, ready to copy to device
     VkBuffer imageStagingBuffer;
@@ -1471,13 +1491,13 @@ static int create_texture_image(char* fileName)
     VkImage texImage;
     VkDeviceMemory texImageMemory;
 
-    texImage = createImage(width, height, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &texImageMemory);
+    texImage = createImage(width1, height1, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &texImageMemory);
 
     //transitioning to allow for transfer
     transitionImageLayout(texImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
     //copy the data to image
-    copyImageBuffer(imageStagingBuffer, texImage, width, height);
+    copyImageBuffer(imageStagingBuffer, texImage, width1, height1);
 
     //transitioning to allow for fragment shader read operation
     transitionImageLayout(texImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -1485,10 +1505,62 @@ static int create_texture_image(char* fileName)
     //Add texture data to vector for reference
     allTextures[num_textures].textureImage = texImage;
     allTextures[num_textures].textureImageMemory = texImageMemory;
-    num_textures++;
 
     vkDestroyBuffer(vulkanBE.mainDevices.device, imageStagingBuffer, nullptr);
     vkFreeMemory(vulkanBE.mainDevices.device, imageStagingBufferMemory, nullptr);
+
+    //NORMAL MAP
+    //load in the image file
+    char* normFileNameToUse = normFileName;
+    if(strlen(normFileName) == 0){normFileNameToUse = fileName;} //if no normal image is provided. use the color image with 1 pixel size.
+
+    int width2, height2;
+    stbi_uc* normImageData = loadTextureFile(normFileNameToUse, &width2, &height2, &imageSize);
+
+    if(strlen(normFileName) == 0)
+    {
+        width2 = height2 = 1;
+        //imageSize = width2 * height2;
+    }
+
+    //create staging buffer to hold loaded data, ready to copy to device
+    VkBuffer normImageStagingBuffer;
+    VkDeviceMemory normImageStagingBufferMemory;
+
+    createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &normImageStagingBuffer, &normImageStagingBufferMemory);
+
+    void* data2;
+    vkMapMemory(vulkanBE.mainDevices.device, normImageStagingBufferMemory, 0, imageSize, 0, &data2);
+    memcpy(data2, normImageData, (size_t)imageSize);
+    vkUnmapMemory(vulkanBE.mainDevices.device, normImageStagingBufferMemory);
+
+    stbi_image_free(normImageData);
+
+    //TODO: for now a DeviceMemory for each texture is fine but for optimal performance, use one DeviceMemory and use multiple VkImage with offsets
+
+    //create Image to hold texture
+    VkImage normTexImage;
+    VkDeviceMemory normTexImageMemory;
+
+    normTexImage = createImage(width2, height2, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &normTexImageMemory);
+
+    //transitioning to allow for transfer
+    transitionImageLayout(normTexImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    //copy the data to image
+    copyImageBuffer(normImageStagingBuffer, normTexImage, width2, height2);
+
+    //transitioning to allow for fragment shader read operation
+    transitionImageLayout(normTexImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+    //Add texture data to vector for reference
+    allTextures[num_textures].normTextureImage = normTexImage;
+    allTextures[num_textures].normTextureImageMemory = normTexImageMemory;
+
+    vkDestroyBuffer(vulkanBE.mainDevices.device, normImageStagingBuffer, nullptr);
+    vkFreeMemory(vulkanBE.mainDevices.device, normImageStagingBufferMemory, nullptr);
+
+    num_textures++;
 
     return num_textures-1;
 }
@@ -1516,6 +1588,10 @@ static void cleanUpBackend(struct Ve_backend* vulkanBackend)
         vkDestroyImageView(vulkanBE.mainDevices.device, allTextures[i].textureImageView, nullptr);
         vkDestroyImage(vulkanBE.mainDevices.device, allTextures[i].textureImage, nullptr);
         vkFreeMemory(vulkanBE.mainDevices.device, allTextures[i].textureImageMemory, nullptr);
+
+        vkDestroyImageView(vulkanBE.mainDevices.device, allTextures[i].normTextureImageView, nullptr);
+        vkDestroyImage(vulkanBE.mainDevices.device, allTextures[i].normTextureImage, nullptr);
+        vkFreeMemory(vulkanBE.mainDevices.device, allTextures[i].normTextureImageMemory, nullptr);
     }
 
     vkDestroyImageView(vulkanBE.mainDevices.device, vulkanBE.depthBufferImages.imageView, nullptr);
@@ -1582,8 +1658,9 @@ static void initBackend(){
     createRenderPass();
     createPushConstantRange();
     createDescriptorSetLayout();
-    createGraphicsPipeline(VK_POLYGON_MODE_FILL);
-    createGraphicsPipeline(VK_POLYGON_MODE_LINE);
+    createGraphicsPipeline(VK_POLYGON_MODE_FILL, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    createGraphicsPipeline(VK_POLYGON_MODE_LINE, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    createGraphicsPipeline(VK_POLYGON_MODE_POINT, VK_PRIMITIVE_TOPOLOGY_POINT_LIST);
     createDepthBufferImage();
     createFrameBuffers();
     createCommandPool();
