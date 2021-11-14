@@ -5,9 +5,10 @@
 
 #include "renderer/ve_renderer.cpp"
 
-int main() {
+int main(int argc, char** argv) {
 
     initEngine();
+
     renderer.run();
 
     return 0;

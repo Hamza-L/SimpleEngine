@@ -21,6 +21,8 @@ static bool LEFT = false;
 static bool SHIFT = false;
 static bool COM = false;
 static float scroll = 0;
+static bool ENTER = false;
+static bool ENTER_FLAG = true;
 
 //mouse events
 static bool MPRESS_R = false;

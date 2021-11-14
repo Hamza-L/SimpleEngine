@@ -28,30 +28,24 @@ struct PushObj{
 };
 
 struct MeshObject{
-    char* name;
+    char* name{};
     struct PushObj pObj;
+    struct Material material{};
 
-    struct Material material;
+    int textureID{};
+    int pipelineFlag = 0;
 
-    int textureID;
-
-    uint32_t pipelineFlag;
-
-    std::vector<MeshObject> children;
+    std::vector<MeshObject> children{};
 
     //data
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
 
     //buffers for GPU Access only
-    VkBuffer vertexBuffer;
-    VkDeviceMemory vertexBufferMemory;
-    VkBuffer indexBuffer;
-    VkDeviceMemory indexBufferMemory;
-};
-
-struct Objects{
-    std::vector<MeshObject> objects;
+    VkBuffer vertexBuffer{};
+    VkDeviceMemory vertexBufferMemory{};
+    VkBuffer indexBuffer{};
+    VkDeviceMemory indexBufferMemory{};
 };
 
 static void transformVert(struct MeshObject* object, mat4 model)
@@ -84,7 +78,6 @@ static void getVertandIndx(struct MeshObject* object, std::vector<struct Vertex>
 
 }
 
-
 static struct MeshObject plane( mat4 model, vec3 color){
 
     struct MeshObject object = {};
@@ -108,6 +101,71 @@ static struct MeshObject plane( mat4 model, vec3 color){
     object.material = material;
 
     return object;
+}
+
+static struct MeshObject wall (vec3 startPoint, vec3 endPoint, vec3 color, float height)
+{
+    struct MeshObject wall_object = {};
+
+    vec3 up = {0.0f,1.0f,0.0f};
+    vec3 diff = endPoint-startPoint;
+    vec3 norm = normalize(cross(up, diff));
+
+    std::vector<Vertex> vertices = {
+            {(vec3){startPoint.x, startPoint.y + height,startPoint.z}  ,{norm.x, 0.0f, norm.z}, {color[0],color[1],color[2]}, {1.0f,0.0f}},
+            {(vec3){endPoint.x,endPoint.y + height,endPoint.z}  ,{norm.x,0.0f, norm.z}, {color[0],color[1],color[2]}, {0.0f,0.0f}},
+            {(vec3){endPoint.x, endPoint.y,endPoint.z} , {norm.x,0.0f,norm.z},{color[0],color[1],color[2]}, {0.0f,1.0f}},
+            {(vec3){startPoint.x, startPoint.y,startPoint.z} ,  {norm.x,0.0f,norm.z},{color[0],color[1],color[2]}, {1.0f,1.0f}},
+            {(vec3){startPoint.x, startPoint.y + height,startPoint.z}  ,{-norm.x, 0.0f, -norm.z}, {color[0],color[1],color[2]}, {1.0f,0.0f}},
+            {(vec3){endPoint.x,endPoint.y + height,endPoint.z}  ,{-norm.x,0.0f, -norm.z}, {color[0],color[1],color[2]}, {0.0f,0.0f}},
+            {(vec3){endPoint.x, endPoint.y,endPoint.z} , {-norm.x,0.0f,-norm.z},{color[0],color[1],color[2]}, {0.0f,1.0f}},
+            {(vec3){startPoint.x, startPoint.y,startPoint.z} ,  {-norm.x,0.0f,-norm.z},{color[0],color[1],color[2]}, {1.0f,1.0f}}
+    };
+
+    std::vector<uint32_t> indices ={  1,0,2,
+                                      2,0,3,
+                                      5,6,4,
+                                      6,7,4  };
+
+    wall_object.vertices = vertices;
+    wall_object.indices = indices;
+    wall_object.pObj.M = GLM_MAT4_IDENTITY;
+
+    //transformVert(&wall_object, model);
+
+    struct Material material = { {color[0],color[1],color[2]}, 16.0f};
+    wall_object.material = material;
+
+    return wall_object;
+}
+
+static struct MeshObject mapFromPath(struct MeshObject path, vec3 color, float size)
+{
+    struct MeshObject map = {};
+
+    std::vector<Vertex> vert_list = {};
+    std::vector<uint32_t> ind_list = {};
+
+    for(int i = 1; i < path.vertices.size(); i++)
+    {
+        struct MeshObject wall_obj = wall((vec3){path.vertices[i-1].position.x - 0.65f, 0.0f, -path.vertices[i-1].position.y - 0.75f} * size, (vec3){path.vertices[i].position.x - 0.65f, 0.0f, -path.vertices[i].position.y - 0.75f} * size, color, 2.0f);
+
+        for(uint32_t indx : wall_obj.indices)
+        {
+            ind_list.push_back(vert_list.size() + indx);
+        }
+
+        for(Vertex v : wall_obj.vertices)
+        {
+            vert_list.push_back(v);
+        }
+    }
+
+    map.vertices = vert_list;
+    map.indices = ind_list;
+    map.pipelineFlag = 0;
+
+    return map;
 }
 
 static struct MeshObject cube( mat4 model, vec3 color)
@@ -376,81 +434,6 @@ static vec3 getSphericalCoord(float horiz_angle, float vert_angle, float radius)
     return coord;
 }
 
-static struct MeshObject envMap(mat4 model, vec3 color, int subdivisions)
-{
-    struct MeshObject sphereObj = {};
-
-    float angleStep = 2.0f*M_PI/(float)subdivisions;
-
-    Vertex v1 = {};
-    v1.position = getSphericalCoord(0, 0, 1);
-    v1.normal = -v1.position;
-    v1.color = color;
-    v1.texCoord = getUVCoord(-v1.normal);;
-    sphereObj.vertices.push_back(v1);
-
-    for(int i=1; i<subdivisions; i++)
-    {
-        for(int j=0; j<subdivisions+1; j++)
-        {
-            Vertex v = {};
-            v.position = getSphericalCoord(angleStep*j, angleStep*i*0.5f, 1);
-            v.normal = -v.position;
-            v.color = color;
-            v.texCoord = getUVCoord(-v.normal);
-            if(j==0){v.texCoord.x = 0;}
-            else if(j==subdivisions){v.texCoord.x = 1;}
-
-            //printf("position is: (%f,%f,%f)\n",v.position.x,v.position.y,v.position.z);
-            sphereObj.vertices.push_back(v);
-
-            if(j==0)
-            {
-                for(int k = 0; k < subdivisions; k++)
-                {
-                    sphereObj.indices.push_back((k % subdivisions) + 1);
-                    sphereObj.indices.push_back((k % subdivisions) + 2);
-                    sphereObj.indices.push_back(0);
-                }
-            } else if (j==subdivisions-1)
-            {
-                for(int k = 0; k < subdivisions; k++)
-                {
-                    int offset = 1 + ( (subdivisions-2) * (subdivisions + 1) );
-                    sphereObj.indices.push_back((k % subdivisions) + offset +1);
-                    sphereObj.indices.push_back((k % subdivisions) + offset);
-                    sphereObj.indices.push_back(offset + subdivisions + 1);
-                }
-            } else
-            {
-                for(int k = 0; k < subdivisions; k++)
-                {
-                    int row_offset = 1 + ( (j-1) * (subdivisions + 1) );
-                    int next_row = 1 + ( (j) * (subdivisions + 1) );
-
-                    sphereObj.indices.push_back((k % subdivisions) + next_row);
-                    sphereObj.indices.push_back((k % subdivisions) + row_offset +1);
-                    sphereObj.indices.push_back((k % subdivisions) + row_offset);
-
-                    sphereObj.indices.push_back((k % subdivisions) + row_offset + 1);
-                    sphereObj.indices.push_back((k % subdivisions) + next_row);
-                    sphereObj.indices.push_back((k % subdivisions) + next_row + 1);
-
-                }
-            }
-        }
-    }
-
-    Vertex vEnd = {};
-    vEnd.position = getSphericalCoord(0, M_PI, 1);
-    vEnd.normal = -vEnd.position;
-    vEnd.color = color;
-    vEnd.texCoord = getUVCoord(-vEnd.normal);
-    sphereObj.vertices.push_back(vEnd);
-
-    return sphereObj;
-}
-
 static struct MeshObject sphere(mat4 model, vec3 color, int subdivisions)
 {
     struct MeshObject sphereObj = {};
@@ -531,9 +514,16 @@ static struct MeshObject sphere(mat4 model, vec3 color, int subdivisions)
     return sphereObj;
 }
 
-static struct MeshObject ObjImporter(const std::string& fileName, glm::vec4 colour){
-    std::ifstream myfile("objects/"+ fileName + ".obj");
+static struct MeshObject objImporter(const std::string& fileName, glm::vec4 colour){
+
+    std::ifstream myfile(fileName);
     std::string data;
+
+    if(myfile.fail())
+    {
+        fprintf(stderr, "failed to open object file at: %s\n",fileName.c_str());
+        exit(1);
+    }
 
     struct MeshObject obj{};
 
@@ -543,22 +533,25 @@ static struct MeshObject ObjImporter(const std::string& fileName, glm::vec4 colo
 
     std::vector<int> normInd;
 
-    getline(myfile, data);
+    //getline(myfile, data);
 
-    int numslash,numspace;
+    int numslash = 0;int numspace = 0;
 
     int counter = 0;
 
-    while(!data.empty()){
+    while(getline(myfile, data)){
+        if(data.empty()){continue;}
         Vertex v0{};
         if(data[0] == 'v' && data[1] == ' '){
             std::string posNum;
             std::vector<float> posList;
-            for(int i=2; i<data.size(); i++){
+            int startData = 1;
+            while(data[startData] == ' '){startData++;}
+            for(int i=startData; i<data.size(); i++){
                 posNum.push_back(data[i]);
                 if(data[i] == ' ' || i==data.size()-1){
                     posNum.pop_back();
-                    posList.push_back(std::stof(posNum));
+                    posList.push_back(std::stod(posNum));
                     posNum.clear();
                 }
             }
@@ -568,74 +561,79 @@ static struct MeshObject ObjImporter(const std::string& fileName, glm::vec4 colo
         if(data[0] == 'v' && data[1] == 'n'){
             std::string normNum;
             std::vector<float> normList;
-            for(int i=3; i<data.size(); i++){
+            int startData = 2;
+            while(data[startData] == ' '){startData++;}
+            for(int i=startData; i<data.size(); i++){
                 normNum.push_back(data[i]);
                 if(data[i] == ' ' || i==data.size()-1){
                     normNum.pop_back();
-                    normList.push_back(std::stof(normNum));
+                    normList.push_back(std::stod(normNum));
                     normNum.clear();
                 }
             }
             normals.push_back(glm::vec3(normList[0],normList[1],normList[2]));
         }
 
+
         if(data[0] == 'f'){
             int posInd1,posInd2,posInd3;
             int normInd1,normInd2,normInd3;
-            std::string num;
+            std::string num = {};
             numslash = 0;
             numspace = 0;
-            for(int i = 2; i<data.size(); i++){
+            int startData = 1;
+            while(data[startData] == ' '){startData++;}
+            for(int i = startData; i<data.size(); i++){
+
 
                 num.push_back(data[i]);
+                //std::cout<<"data[i]: "<<data[i]<<" with num: "<<num<<std::endl;
 
-                //std::cout<<"data[i]: "<<data[i]<<std::endl;
+
 
                 if(data[i] == '/'){
                     numslash++;
                     num.pop_back();
                     if(numslash == 1){
-                        //std::cout<<num<<std::endl;
+                        //std::cout<<"num slash:"<<numslash<<" with num: "<<num<<std::endl;
                         posInd1 = std::stoi(num);
                     } else if( numslash == 3){
-                        //std::cout<<num<<std::endl;
+                        //std::cout<<"num slash:"<<numslash<<" with num: "<<num<<std::endl;
                         posInd2 = std::stoi(num);
                     } else if( numslash == 5){
-                        //std::cout<<num<<std::endl;
+                        //std::cout<<"num slash:"<<numslash<<" with num: "<<num<<std::endl;
                         posInd3 = std::stoi(num);
                     }
 
                     num.clear();
                 }
 
-                if(data[i] == ' '){
+
+                if(data[i] == ' ' || i==(data.size()-1)){
                     numspace++;
-                    num.pop_back();
+                    if(i!=(data.size()-1)){num.pop_back();}
                     if(numspace == 1){
                         //std::cout<<num<<std::endl;
                         normInd1 = std::stoi(num);
                     } else if( numspace == 2){
                         //std::cout<<num<<std::endl;
                         normInd2 = std::stoi(num);
+                    } else if( numspace == 3){
+                        //std::cout<<num<<std::endl;
+                        normInd3 = std::stoi(num);
                     }
                     num.clear();
-
                 }
 
-                if (i == (data.size()-1)){
-                    //std::cout<<num<<std::endl;
-                    normInd3 = std::stoi(num);
-                    num.clear();
-                }
-
+                //exit(1);
             }
             num.clear();
 
             Vertex v0,v1,v2;
 
             obj.indices.push_back(counter);
-            obj.indices.push_back(counter+1);
             obj.indices.push_back(counter+2);
+            obj.indices.push_back(counter+1);
 
             counter += 3;
 
@@ -657,13 +655,15 @@ static struct MeshObject ObjImporter(const std::string& fileName, glm::vec4 colo
 
         }
 
-        getline(myfile, data);
+        //getline(myfile, data);
     }
 
     myfile.close();
 
     return obj;
 }
+
+
 
 
 #endif //VULKANENGINE2_SHAPES_H

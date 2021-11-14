@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <string>
 
 using namespace glm;
 
@@ -38,16 +39,16 @@ struct Vertex {
     vec2 texCoord;
 };
 
-static struct ShaderCode readSPRVFile(const char* filename)
+static struct ShaderCode readSPRVFile(std::string filename)
 {
     struct ShaderCode shaderCode = {};
 
     //opens file to read binary
     FILE *fp;
-    fp = fopen( filename, "rb");
+    fp = fopen( filename.c_str(), "rb");
 
     if(fp == NULL){
-        fprintf(stderr,"Failed to open SPR-V file at location: %s\n",filename);
+        fprintf(stderr,"Failed to open SPR-V file at location: %s\n",filename.c_str());
         exit(1);
     }
 

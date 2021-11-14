@@ -3,6 +3,7 @@
 //
 
 #include "kb_input.h"
+#include <cstdio>
 
 void static key_callback(GLFWwindow *window, int key, int scancode, int action, int mods) {
     {
@@ -42,10 +43,19 @@ void static key_callback(GLFWwindow *window, int key, int scancode, int action, 
         } else if (key == GLFW_KEY_LEFT_SUPER && action == GLFW_RELEASE) {
             COM = false;
         }
+
+        if (key == GLFW_KEY_ENTER && action == GLFW_PRESS){
+            ENTER = true;
+        }
+        if (key == GLFW_KEY_ENTER && action == GLFW_RELEASE) {
+            ENTER = false;
+            ENTER_FLAG = true;
+        }
     }
 }
 
 void static mouse_callback(GLFWwindow *window, int button, int action, int mods) {
+
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow)){
         MPRESS_L = true;
     } else {

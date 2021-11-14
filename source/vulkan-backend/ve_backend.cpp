@@ -27,9 +27,23 @@ static void initVulkanBE(struct Ve_backend vulkanBackend){
     vulkanBE.descriptors.samplerDescriptorSet = (VkDescriptorSet*)realloc(vulkanBE.descriptors.samplerDescriptorSet, MAX_TEXTURES * sizeof(VkDescriptorSet));
 }
 
-static void cleanUpVulkanBE(){
+static void freeUpVulkanBE(){
+    //free(vulkanBE.swapChainImages);
+    free(vulkanBE.descriptors.samplerDescriptorSet);
+    free(allTextures);
+    free(vulkanBE.pipelineLayout);
+    free(vulkanBE.graphicsPipeline);
     free(vulkanBE.swapChainDetails.surfaceFormat);
     free(vulkanBE.swapChainDetails.presentationModes);
+    free(vulkanBE.sync.imageAvailable);
+    free(vulkanBE.sync.renderFinished);
+    free(vulkanBE.sync.drawFences);
+    free(vulkanBE.descriptors.uniformBuffer);
+    free(vulkanBE.descriptors.uniformBufferMemory);
+    free(vulkanBE.descriptors.light_UB);
+    free(vulkanBE.descriptors.light_UBM);
+    free(vulkanBE.commandBuffers);
+    free(vulkanBE.swapChainImages);
 }
 
 static void getQueueFamilies(VkPhysicalDevice physicalDevice)
@@ -599,14 +613,16 @@ static void createSwapChain()
         //create image view here
         vulkanBE.swapChainImages[i].imageView = createImageView(images[i], surfaceFormat.format, VK_IMAGE_ASPECT_COLOR_BIT);
     }
+
+    free(images);
 }
 
-static VkShaderModule createShaderModule(struct ShaderCode* shaderCode)
+static VkShaderModule createShaderModule(struct ShaderCode code)
 {
     VkShaderModuleCreateInfo shaderModuleCreateInfo = {};
     shaderModuleCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    shaderModuleCreateInfo.codeSize = shaderCode->code_size;
-    shaderModuleCreateInfo.pCode = (const uint32_t *)shaderCode->code;
+    shaderModuleCreateInfo.codeSize = code.code_size;
+    shaderModuleCreateInfo.pCode = (uint32_t *)(code.code);
     shaderModuleCreateInfo.pNext = nullptr;
     shaderModuleCreateInfo.flags = 0;
 
@@ -877,16 +893,16 @@ static void createPushConstantRange()
     vulkanBE.descriptors.pushConstantRange.size = sizeof(struct PushObj);
 }
 
-static void createGraphicsPipeline(VkPolygonMode flag, VkPrimitiveTopology topology)
+static void createGraphicsPipeline(VkPolygonMode flag, VkPrimitiveTopology topology, bool texEnabled, const std::string& vertShader, const std::string& fragShader)
 {
 
     //read in SPIR-V Code
-    struct ShaderCode vertexShaderCode = readSPRVFile("source/shader/vert.spv");
-    struct ShaderCode fragShaderCode = readSPRVFile("source/shader/frag.spv");
+    struct ShaderCode vertexShaderCode = readSPRVFile("source/shader/" + vertShader + ".spv");
+    struct ShaderCode fragShaderCode = readSPRVFile("source/shader/" + fragShader + ".spv");
 
     //Build shader Modules to link to graphics pipeline
-    VkShaderModule vertexShaderModule = createShaderModule(&vertexShaderCode);
-    VkShaderModule fragShaderModule = createShaderModule(&fragShaderCode);
+    VkShaderModule vertexShaderModule = createShaderModule(vertexShaderCode);
+    VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
 
     //vertex stage create info
     VkPipelineShaderStageCreateInfo vertexShaderCreateInfo = {};
@@ -1015,12 +1031,21 @@ static void createGraphicsPipeline(VkPolygonMode flag, VkPrimitiveTopology topol
     colorBlendStateCreateInfo.pAttachments = &colorBlendAttachmentState;
 
     //pipeline layout (TODO: apply future descriptor set layout and push constants)
-    VkDescriptorSetLayout descriptorSetLayouts[2] = {vulkanBE.descriptors.descriptorSetLayout, vulkanBE.descriptors.samplerSetLayout};
-
     VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {};
+    if(texEnabled)
+    {
+        VkDescriptorSetLayout descriptorSetLayouts[2] = {vulkanBE.descriptors.descriptorSetLayout, vulkanBE.descriptors.samplerSetLayout};
+        int descriptorCount = 2;
+        pipelineLayoutCreateInfo.setLayoutCount = descriptorCount;
+        pipelineLayoutCreateInfo.pSetLayouts = descriptorSetLayouts;
+    } else {
+        int descriptorCount = 1;
+        pipelineLayoutCreateInfo.setLayoutCount = descriptorCount;
+        pipelineLayoutCreateInfo.pSetLayouts = &vulkanBE.descriptors.descriptorSetLayout;
+    }
+
+
     pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutCreateInfo.setLayoutCount = 2;
-    pipelineLayoutCreateInfo.pSetLayouts = descriptorSetLayouts;
     pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
     pipelineLayoutCreateInfo.pPushConstantRanges = &vulkanBE.descriptors.pushConstantRange;
 
@@ -1075,8 +1100,7 @@ static void createGraphicsPipeline(VkPolygonMode flag, VkPrimitiveTopology topol
     //destroy shader module and code
     vkDestroyShaderModule(vulkanBE.mainDevices.device, fragShaderModule, nullptr);
     vkDestroyShaderModule(vulkanBE.mainDevices.device, vertexShaderModule, nullptr);
-    free(vertexShaderCode.code);
-    free(fragShaderCode.code);
+
 }
 
 static void createDepthBufferImage()
@@ -1441,7 +1465,7 @@ static void copyImageBuffer(VkBuffer srcBuffer, VkImage dstBuffer, uint32_t widt
     end_ot_cmd_submit(&vulkanBE.mainDevices.device, &vulkanBE.pools.transferCommandPool, &vulkanBE.transferQueue, &commandBuffer);
 }
 
-static stbi_uc* loadTextureFile(char* filename, int* width, int* height, VkDeviceSize* imageSize)
+static stbi_uc* loadTextureFile(const char* filename, int* width, int* height, VkDeviceSize* imageSize)
 {
     //number of channels image uses
     int channels;
@@ -1465,7 +1489,7 @@ static stbi_uc* loadTextureFile(char* filename, int* width, int* height, VkDevic
     return image;
 }
 
-static int create_texture_image(char* fileName, char* normFileName)
+static int create_texture_image(const char* fileName, const char* normFileName)
 {
     //load in the image file
     int width1, height1;
@@ -1511,7 +1535,7 @@ static int create_texture_image(char* fileName, char* normFileName)
 
     //NORMAL MAP
     //load in the image file
-    char* normFileNameToUse = normFileName;
+    const char* normFileNameToUse = normFileName;
     if(strlen(normFileName) == 0){normFileNameToUse = fileName;} //if no normal image is provided. use the color image with 1 pixel size.
 
     int width2, height2;
@@ -1640,7 +1664,7 @@ static void cleanUpBackend(struct Ve_backend* vulkanBackend)
     vkDestroyDevice(vulkanBE.mainDevices.device, nullptr);
     if (enableValidationLayers) {DestroyDebugUtilsMessengerEXT(vulkanBE.instance, debugMessenger, nullptr);}
     vkDestroyInstance(vulkanBE.instance, nullptr);
-    cleanUpVulkanBE();
+    freeUpVulkanBE();
 }
 
 static void initBackend(){
@@ -1658,9 +1682,10 @@ static void initBackend(){
     createRenderPass();
     createPushConstantRange();
     createDescriptorSetLayout();
-    createGraphicsPipeline(VK_POLYGON_MODE_FILL, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    createGraphicsPipeline(VK_POLYGON_MODE_LINE, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    createGraphicsPipeline(VK_POLYGON_MODE_POINT, VK_PRIMITIVE_TOPOLOGY_POINT_LIST);
+    createGraphicsPipeline(VK_POLYGON_MODE_FILL, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, true, "texvert", "texfrag");
+    createGraphicsPipeline(VK_POLYGON_MODE_LINE, VK_PRIMITIVE_TOPOLOGY_LINE_LIST, false, "vert", "frag");
+    createGraphicsPipeline(VK_POLYGON_MODE_POINT, VK_PRIMITIVE_TOPOLOGY_POINT_LIST, false, "vert", "frag");
+    createGraphicsPipeline(VK_POLYGON_MODE_FILL, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, false, "vert", "frag");
     createDepthBufferImage();
     createFrameBuffers();
     createCommandPool();

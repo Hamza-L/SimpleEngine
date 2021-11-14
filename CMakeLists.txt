@@ -8,7 +8,7 @@ include_directories(C:/VulkanSDK/1.2.189.2/Include)
 include_directories(C:/GLM/glm)
 include_directories(${PROJECT_SOURCE_DIR}/external/imgui)
 
-add_executable(SimpleEngine source/main.cpp source/window/ve_window.cpp source/window/ve_window.h source/vulkan-backend/ve_backend.cpp source/vulkan-backend/ve_backend.h source/vulkan-backend/ve_validation_layer.cpp source/vulkan-backend/ve_validation_layer.h source/utilities/utilities.h source/renderer/ve_renderer.cpp source/renderer/ve_renderer.h source/utilities/shapes.h source/renderer/kb_input.cpp source/renderer/kb_input.h)
+add_executable(SimpleEngine source/main.cpp source/window/ve_window.cpp source/window/ve_window.h source/vulkan-backend/ve_backend.cpp source/vulkan-backend/ve_backend.h source/vulkan-backend/ve_validation_layer.cpp source/vulkan-backend/ve_validation_layer.h source/utilities/utilities.h source/renderer/ve_renderer.cpp source/renderer/ve_renderer.h source/utilities/shapes.h source/utilities/kb_input.cpp source/utilities/kb_input.h)
 
 target_sources(SimpleEngine PUBLIC
         "external/imgui/imgui.h"

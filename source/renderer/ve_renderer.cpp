@@ -5,10 +5,15 @@
 #include "ve_renderer.h"
 
 static struct Ve_renderer renderer = {};
+
 static std::vector<MeshObject> object_list = {};
+static std::vector<MeshObject> path_list = {};
 static std::vector<Camera> camera_list = {};
 static struct Lights light_list = {};
-static struct Gui gui;
+
+static struct Gui gui = {};
+static bool arcballEnable = true;
+static bool showMap = false;
 
 static void initGUI()
 {
@@ -86,7 +91,7 @@ static void imGuiParametersSetup() {
     ImGui::End();
 }
 
-static void create_texture(struct MeshObject* obj, char* filename, char* normFilename)
+static int create_texture(struct MeshObject* obj, const char* filename, const char* normFilename)
 {
     //create texture Image then store it's index array
     int textureImageLoc = create_texture_image(filename, normFilename);
@@ -104,35 +109,49 @@ static void create_texture(struct MeshObject* obj, char* filename, char* normFil
     obj->pObj.isTex = 1;
 
     if(strlen(normFilename) != 0){obj->pObj.isNormTex = 1;}
+
+    return textureImageLoc;
 }
 
 static void loadModels()
 {
-    glm::mat4 model = glm::mat4(1.0f);
-
-    model = glm::rotate(model, glm::radians(90.0f), glm::vec3(1.0f,0.0f,0.0f));
 
     struct MeshObject checkerBoard = checkerPlane(glm::rotate(GLM_MAT4_IDENTITY, glm::radians(-90.0f), glm::vec3(1.0f,0.0f,0.0f)),
             40,
             glm::vec3(0.4f,0.4f,0.4f),
             glm::vec3(0.2f,0.2f,0.2f));
     struct MeshObject sph = sphere(GLM_MAT4_IDENTITY, {1.0f,1.0f,1.0f}, 50);
-    struct MeshObject cube1 = cube(GLM_MAT4_IDENTITY,{0.9f,0.8f,0.0f});
+    struct MeshObject test = objImporter("assets/Helicopter/Seahawk.obj", {1.0f,0.8f,0.0f,1.0f});
+    sph.pObj.M = glm::scale(GLM_MAT4_IDENTITY, vec3(0.3f));
 
-    //envM.pObj.M = glm::scale(glm::mat4(1.0f),vec3(10.0f));
-    //envM.pObj.isEnvMap = 1;
-    cube1.pObj.M = glm::translate(glm::mat4(1.0f), vec3(0.0f,1.0f,0.0f));
-    //sph.pObj.M = glm::translate(glm::mat4(1.0f), vec3(0.0f,2.0f,0.0f));
 
-    create_texture(&cube1, (char*)"giraffe.jpg",(char*)"");
-    create_texture(&sph, (char*)"enhanced_moon.jpg", (char*)"enhanced_moon.png");
+    struct MeshObject mapBG = {};
+    std::vector<Vertex> vertices = {
+            {(vec3){0.9f,-0.4f,0.0f}  ,{0.0f,0.0f,1.0f}, vec3(0.0f), {1.0f,0.0f}},
+            {(vec3){0.4f,-0.4f,0.0f}  ,{0.0f,0.0f,1.0f}, vec3(0.0f), {0.0f,0.0f}},
+            {(vec3){0.4f,-0.9f,0.0f} , {0.0f,0.0f,1.0f},vec3(0.0f), {0.0f,1.0f}},
+            {(vec3){0.9f,-0.9f,0.0f} ,  {0.0f,0.0f,1.0f},vec3(0.0f), {1.0f,1.0f}}
+    };
+    std::vector<uint32_t> indices ={  1,0,2,
+                                      2,0,3   };
+    mapBG.pipelineFlag = 3;
+    mapBG.pObj.isTex = 0.5f;
+    mapBG.pObj.M = GLM_MAT4_IDENTITY;
+    mapBG.vertices = vertices;
+    mapBG.indices = indices;
+
+
+    test.pObj.M = glm::scale(GLM_MAT4_IDENTITY, glm::vec3(0.05f));
+
+    create_texture(&sph, (char*)"giraffe.jpg",(char*)"");
+    //create_texture(&test, (char*)"enhanced_moon.jpg", (char*)"enhanced_moon.png");
+    checkerBoard.pipelineFlag = 0;
+    //sph.pipelineFlag = 0;
 
     //add objects to the object list
-    //object_list.push_back(checkerBoard);
-    object_list.push_back(sph);
-    //object_list.push_back(checkerBoard);
-    //object_list.push_back(envM);
-
+    //object_list.push_back(wall1);
+    object_list.push_back(checkerBoard);
+    object_list.push_back(mapBG);
 }
 
 static void loadCameras()
@@ -141,8 +160,8 @@ static void loadCameras()
 
     struct Camera cam1 = {};
 
-    cam1.projection = glm::perspective(glm::radians(50.0f), aspectRatio, 0.1f, 100.0f);
-    cam1.view = glm::lookAt(glm::vec3(-2.0f,4.0f,8.0f), glm::vec3(0.0f), glm::vec3(0.0f,1.0f,0.0f));
+    cam1.projection = glm::perspective(glm::radians(75.0f), aspectRatio, 0.1f, 100.0f);
+    cam1.view = glm::lookAt(glm::vec3(-2.0f,7.0f,8.0f), glm::vec3(0.0f), glm::vec3(0.0f,1.0f,0.0f));
 
     //cam1.projection[1][1] *= -1; //we need to infer the y coordinate because vulkan
     camera_list.push_back(cam1);
@@ -152,6 +171,23 @@ static void loadLights()
 {
     light_list.light1 = glm::vec4(4.0f,5.0f,4.0,1.0f);
     light_list.light2 = glm::vec4(-8.0f,5.0f,-3.0f,1.0f);
+}
+
+static void destroyVertexBuffer(struct MeshObject* meshObj)
+{
+    if(meshObj->vertexBufferMemory != NULL || meshObj->vertexBuffer != VK_NULL_HANDLE)
+    {
+        vkDestroyBuffer(vulkanBE.mainDevices.device, meshObj->vertexBuffer, nullptr);
+        vkFreeMemory(vulkanBE.mainDevices.device, meshObj->vertexBufferMemory, nullptr);
+    }
+}
+
+static void destroyIndexBuffer(struct MeshObject* meshObj) {
+    if (meshObj->indexBufferMemory != NULL || meshObj->indexBuffer != VK_NULL_HANDLE)
+    {
+        vkDestroyBuffer(vulkanBE.mainDevices.device, meshObj->indexBuffer, nullptr);
+        vkFreeMemory(vulkanBE.mainDevices.device, meshObj->indexBufferMemory, nullptr);
+    }
 }
 
 static void createVertexBuffer(struct MeshObject* meshObj)
@@ -325,7 +361,7 @@ static glm::vec3 getVectorFromMouse(double xPos, double yPos) {
     return pt;
 }
 
-static void updateModel(int indx)
+static void updateModelArcball(int indx)
 {
     double dot;
     double angle;
@@ -335,7 +371,7 @@ static void updateModel(int indx)
 
     if(MPRESS_L && MFLAG_L){
         MFLAG_L = false;
-        //view = glm::mat4(uboVP.V);
+
         double xPosInit,yPosInit;
         glfwGetCursorPos(ve_window.window,&xPosInit,&yPosInit);
         glm::vec4 temp1 = VInv * glm::vec4(getVectorFromMouse(xPosInit,yPosInit),0.0f);
@@ -349,9 +385,6 @@ static void updateModel(int indx)
 
         glm::vec4 temp = VInv * glm::vec4(getVectorFromMouse(xPosCurr,yPosCurr),0.0f);
         mouseCurr = glm::normalize(glm::vec3(temp.x,temp.y,temp.z));
-        //std::cout<<"mouseCurr: "<<mouseCurr.x<<" "<<mouseCurr.y<<" "<<mouseCurr.z<<std::endl;
-
-        //std::cout<<glm::length(glm::vec3(mouseCurr - mouseInit))<<std::endl;
 
         if(glm::length(glm::vec3(mouseCurr - mouseInit)) < 1E-05){
             //std::cout<<"do nothing"<<std::endl;
@@ -364,23 +397,14 @@ static void updateModel(int indx)
             angle = glm::acos(dot) * GAIN;
 
             R = glm::translate(glm::rotate(glm::translate(glm::mat4(1.0f),vec3(Mmodel[3][0],Mmodel[3][1],Mmodel[3][2])), (float)angle, Axis),vec3(-Mmodel[3][0],-Mmodel[3][1],-Mmodel[3][2]));
-            //std::cout<<"mouse curr: ["<<mouseCurr.x<<","<<mouseCurr.y<<","<<mouseCurr.z<<"], "<<"mouse init: ["<<mouseInit.x<<","<<mouseInit.y<<","<<mouseInit.z<<"], "<<angle<<std::endl;
 
             object_list[indx].pObj.M = R * Mmodel;
-            //modelList[modelList.size()-1]->setModel(R * Mmodel);
-            //glm::mat4 tempV = glm::translate(glm::mat4(1.0f),glm::vec3(glm::inverse(uboVP.V)[3][0],glm::inverse(uboVP.V)[3][1],glm::inverse(uboVP.V)[3][2]));
-
-            //uboVP.V = uboVP.V * glm::inverse(R);
-            //uboVP.V = uboVP.V * glm::rotate(glm::mat4(1.0f), (float)angle, Axis);
             mouseInit = mouseCurr;
         }
-    } else {
-        object_list[indx].pObj.M =  glm::rotate(glm::mat4(1.0f), 0.0005f,glm::vec3(0.0f,1.0f,0.0f)) * object_list[indx].pObj.M;
-        //NOT THE SAME AS = glm::rotate(object_list[indx].pObj.M, 0.001f,glm::vec3(0.0f,1.0f,0.0f))
     }
 }
 
-static void updateCamera(int indx)
+static void updateCameraArcball(int indx)
 {
     double dot;
     double angle;
@@ -449,24 +473,111 @@ static void updateCamera(int indx)
     camera_list[indx].projection = glm::perspective(glm::radians(50.0f - scroll), aspectRatio, 0.1f, 100.0f);
 }
 
-static void destroyVertexBuffer(struct MeshObject* meshObj)
+static void updateModel(int indx)
 {
-    vkDestroyBuffer(vulkanBE.mainDevices.device, meshObj->vertexBuffer, nullptr);
-    vkFreeMemory(vulkanBE.mainDevices.device, meshObj->vertexBufferMemory, nullptr);
+    glm::mat4 VInv = glm::inverse(camera_list[indx].view);
+
+    if(arcballEnable)
+    {
+        //updateModelArcball(indx);
+    }
+
+    if(MPRESS_L && MFLAG_L){
+        MFLAG_L = false;
+        double xPosInit,yPosInit;
+        glfwGetCursorPos(ve_window.window,&xPosInit,&yPosInit);
+        xPosInit = (xPosInit/ve_window.WIDTH) * 2.0f - 1;
+        yPosInit = (-yPosInit/ve_window.HEIGHT) * 2.0f + 1;
+
+        glm::vec4 temp1 = VInv * glm::vec4(getVectorFromMouse(xPosInit,yPosInit),0.0f);
+        mouseInit = glm::vec3(xPosInit, yPosInit, 0.0f);
+
+        //printf("position is at: %f, %f", xPosInit, yPosInit);
+
+        Vertex v = {};
+        v.position = clamp(mouseInit,glm::vec3(0.4f,-0.9f,0.0f),glm::vec3(0.9f,-0.4,0.0f));
+        v.color = vec3(1.0f);
+
+        if(path_list.empty())
+        {
+            //printf("no vertex yet added!");
+            struct MeshObject mapObj = {};
+            mapObj.pObj.M = GLM_MAT4_IDENTITY;
+            mapObj.pipelineFlag = 1;
+            mapObj.pObj.isTex = 0;
+            mapObj.vertices.push_back(v);
+
+            struct MeshObject mapObj2 = {};
+            mapObj2.pObj.M = GLM_MAT4_IDENTITY;
+            mapObj2.pipelineFlag = 2;
+            mapObj2.pObj.isTex = 0;
+            mapObj2.vertices.push_back(v);
+
+            path_list.push_back(mapObj);
+            path_list.push_back(mapObj2);
+        }
+        if(!path_list.empty()){
+            //printf("vertex added!");
+
+            path_list[0].indices.push_back( path_list[0].vertices.size() - 1 );
+            path_list[0].indices.push_back( path_list[0].vertices.size() );
+            path_list[0].vertices.push_back(v);
+
+            path_list[1].indices.push_back( path_list[1].vertices.size() - 1 );
+            path_list[1].indices.push_back( path_list[1].vertices.size() );
+            path_list[1].vertices.push_back(v);
+
+            vkDeviceWaitIdle(vulkanBE.mainDevices.device);
+
+            destroyVertexBuffer(&path_list[0]);
+            destroyIndexBuffer(&path_list[0]);
+            destroyVertexBuffer(&path_list[1]);
+            destroyIndexBuffer(&path_list[1]);
+
+            createVertexBuffer(&path_list[0]);
+            createIndexBuffer(&path_list[0]);
+            createVertexBuffer(&path_list[1]);
+            createIndexBuffer(&path_list[1]);
+
+            if(path_list[0].vertices.size()>1){
+                struct MeshObject map = mapFromPath(path_list[0], (vec3){0.5f,0.5f,0.5f},  20.0f);
+
+                if(object_list.size() > 2)
+                {
+                    destroyVertexBuffer(&object_list[object_list.size()-1]);
+                    destroyIndexBuffer(&object_list[object_list.size()-1]);
+                    object_list.pop_back();
+                }
+
+                object_list.push_back(map);
+                createVertexBuffer(&object_list[object_list.size()-1]);
+                createIndexBuffer(&object_list[object_list.size()-1]);
+            }
+        }
+
+
+    }
 }
 
-static void destroyIndexBuffer(struct MeshObject* meshObj)
+static void updateCamera(int indx)
 {
-    vkDestroyBuffer(vulkanBE.mainDevices.device, meshObj->indexBuffer, nullptr);
-    vkFreeMemory(vulkanBE.mainDevices.device, meshObj->indexBufferMemory, nullptr);
+    if(arcballEnable)
+    {
+        updateCameraArcball(indx);
+    }
 }
-
-
 
 static void cleanUpRenderer()
 {
     vkDeviceWaitIdle(vulkanBE.mainDevices.device);
+
     for(auto & obj : object_list)
+    {
+        destroyVertexBuffer(&obj);
+        destroyIndexBuffer(&obj);
+    }
+
+    for(auto & obj : path_list)
     {
         destroyVertexBuffer(&obj);
         destroyIndexBuffer(&obj);
@@ -511,32 +622,77 @@ static void recordCommand(uint32_t currentImage){
 
     vkCmdBeginRenderPass(vulkanBE.commandBuffers[currentImage], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE); // all the commands will be primary
 
-        for(int j = 0; j < object_list.size(); j++)
+        std::vector<struct MeshObject>* objectsToRender;
+        if(showMap)
         {
-            //bind pipeline to be used in renderpass
-            vkCmdBindPipeline(vulkanBE.commandBuffers[currentImage], VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanBE.graphicsPipeline[object_list[j].pipelineFlag]);
+            objectsToRender = &object_list;
+        } else
+        {
+            objectsToRender = &path_list;
+        }
 
-            VkBuffer vertexBuffers[] = {object_list[j].vertexBuffer};      //buffers to bind
+        for(auto & mesh : path_list)
+        {
+            if((mesh.vertices.empty() && mesh.pipelineFlag == 2) || (mesh.vertices.size()<2 && mesh.pipelineFlag == 1))
+            {
+                break;
+            }
+            //bind pipeline to be used in renderpass
+            vkCmdBindPipeline(vulkanBE.commandBuffers[currentImage], VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanBE.graphicsPipeline[mesh.pipelineFlag]);
+
+            VkBuffer vertexBuffers[] = {mesh.vertexBuffer};      //buffers to bind
             VkDeviceSize offsets[] = {0};                           //offset into buffer being bound
             vkCmdBindVertexBuffers(vulkanBE.commandBuffers[currentImage], 0, 1, vertexBuffers, offsets);
 
             //binding the index buffer with 0 offset using the uint32type
-            vkCmdBindIndexBuffer(vulkanBE.commandBuffers[currentImage], object_list[j].indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdBindIndexBuffer(vulkanBE.commandBuffers[currentImage], mesh.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
             //push pushconstat
-            vkCmdPushConstants(vulkanBE.commandBuffers[currentImage], vulkanBE.pipelineLayout[object_list[j].pipelineFlag], VK_SHADER_STAGE_VERTEX_BIT, 0, vulkanBE.descriptors.pushConstantRange.size, &object_list[j].pObj);
+            vkCmdPushConstants(vulkanBE.commandBuffers[currentImage], vulkanBE.pipelineLayout[mesh.pipelineFlag], VK_SHADER_STAGE_VERTEX_BIT, 0, vulkanBE.descriptors.pushConstantRange.size, &mesh.pObj);
 
-            VkDescriptorSet descriptorSetGroup[2] = {vulkanBE.descriptors.descriptorSet[currentImage], vulkanBE.descriptors.samplerDescriptorSet[object_list[j].textureID]};
+            VkDescriptorSet descriptorSetGroup[2] = {vulkanBE.descriptors.descriptorSet[currentImage], vulkanBE.descriptors.samplerDescriptorSet[mesh.textureID]};
             int numDescriptorSet = 2;
-            if(object_list[j].textureID == -1) {
+            if(mesh.pipelineFlag > 0) {
                 numDescriptorSet = 1;
             }
             //bind descriptor set
-            vkCmdBindDescriptorSets(vulkanBE.commandBuffers[currentImage], VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanBE.pipelineLayout[object_list[j].pipelineFlag], 0, numDescriptorSet, descriptorSetGroup, 0, nullptr);
+            vkCmdBindDescriptorSets(vulkanBE.commandBuffers[currentImage], VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanBE.pipelineLayout[mesh.pipelineFlag], 0, numDescriptorSet, descriptorSetGroup, 0, nullptr);
 
             //number of times to draw/run the shader/pipeline.
             //vkCmdDraw(vulkanBE.commandBuffers[currentImage],object_list[j].vertices.size(), 1, 0, 0);
-            vkCmdDrawIndexed(vulkanBE.commandBuffers[currentImage], object_list[j].indices.size(), 1, 0, 0, 0);
+            vkCmdDrawIndexed(vulkanBE.commandBuffers[currentImage], mesh.indices.size(), 1, 0, 0, 0);
+        }
+
+        for(auto & mesh : object_list)
+        {
+            if((mesh.vertices.empty() && mesh.pipelineFlag == 2) || (mesh.vertices.size()<2 && mesh.pipelineFlag == 1))
+            {
+                break;
+            }
+            //bind pipeline to be used in renderpass
+            vkCmdBindPipeline(vulkanBE.commandBuffers[currentImage], VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanBE.graphicsPipeline[mesh.pipelineFlag]);
+
+            VkBuffer vertexBuffers[] = {mesh.vertexBuffer};      //buffers to bind
+            VkDeviceSize offsets[] = {0};                           //offset into buffer being bound
+            vkCmdBindVertexBuffers(vulkanBE.commandBuffers[currentImage], 0, 1, vertexBuffers, offsets);
+
+            //binding the index buffer with 0 offset using the uint32type
+            vkCmdBindIndexBuffer(vulkanBE.commandBuffers[currentImage], mesh.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+
+            //push pushconstat
+            vkCmdPushConstants(vulkanBE.commandBuffers[currentImage], vulkanBE.pipelineLayout[mesh.pipelineFlag], VK_SHADER_STAGE_VERTEX_BIT, 0, vulkanBE.descriptors.pushConstantRange.size, &mesh.pObj);
+
+            VkDescriptorSet descriptorSetGroup[2] = {vulkanBE.descriptors.descriptorSet[currentImage], vulkanBE.descriptors.samplerDescriptorSet[mesh.textureID]};
+            int numDescriptorSet = 2;
+            if(mesh.pipelineFlag > 0) {
+                numDescriptorSet = 1;
+            }
+            //bind descriptor set
+            vkCmdBindDescriptorSets(vulkanBE.commandBuffers[currentImage], VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanBE.pipelineLayout[mesh.pipelineFlag], 0, numDescriptorSet, descriptorSetGroup, 0, nullptr);
+
+            //number of times to draw/run the shader/pipeline.
+            //vkCmdDraw(vulkanBE.commandBuffers[currentImage],object_list[j].vertices.size(), 1, 0, 0);
+            vkCmdDrawIndexed(vulkanBE.commandBuffers[currentImage], mesh.indices.size(), 1, 0, 0, 0);
         }
 
     ImGui_ImplVulkan_RenderDrawData(gui.draw_data, vulkanBE.commandBuffers[currentImage]);
@@ -610,6 +766,14 @@ static void draw()
 
 static void run(){
 
+    float lastTime = 0;
+    glfwSetTime(0);
+
+    //keyboard input
+    glfwSetKeyCallback(ve_window.window,key_callback);
+    glfwSetMouseButtonCallback(ve_window.window, mouse_callback);
+    glfwSetScrollCallback(ve_window.window, scroll_callback);
+
     while(!glfwWindowShouldClose(ve_window.window)){
         glfwPollEvents();
 
@@ -623,10 +787,9 @@ static void run(){
 
         gui.draw_data = ImGui::GetDrawData();
 
-        //keyboard input
-        glfwSetKeyCallback(ve_window.window,key_callback);
-        glfwSetMouseButtonCallback(ve_window.window, mouse_callback);
-        glfwSetScrollCallback(ve_window.window, scroll_callback);
+        float now = (float)glfwGetTime();
+        frameTime = now - lastTime;
+        lastTime = now;
 
         updateModel(0);
         updateCamera(0);
@@ -634,14 +797,14 @@ static void run(){
 
         draw();
     }
+    vkDeviceWaitIdle(vulkanBE.mainDevices.device);
 
-    glfwDestroyWindow(ve_window.window);
     cleanUpRenderer();
     cleanUpBackend(&vulkanBE);
 
+    glfwDestroyWindow(ve_window.window);
     glfwTerminate();
 }
-
 static void initEngine(){
     renderer.run = run;
     initBackend();
@@ -649,7 +812,6 @@ static void initEngine(){
     loadModels();
     loadCameras();
     loadLights();
-    //initMesh(&object1);
     for(int i = 0; i < object_list.size(); i++)
     {
         createVertexBuffer(&object_list[i]);
