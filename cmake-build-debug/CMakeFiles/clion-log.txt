@@ -1,4 +1,0 @@
-C:\Users\hlahm\AppData\Local\JetBrains\Toolbox\apps\CLion\ch-0\212.5457.51\bin\cmake\win\bin\cmake.exe -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=C:/msys64/mingw64/bin/clang.exe -DCMAKE_CXX_COMPILER=C:/msys64/mingw64/bin/clang++.exe -DCMAKE_DEPENDS_USE_COMPILER=FALSE -G "CodeBlocks - MinGW Makefiles" C:\Users\hlahm\Documents\gitProjects\SimpleEngine
--- Configuring done
--- Generating done
--- Build files have been written to: C:/Users/hlahm/Documents/gitProjects/SimpleEngine/cmake-build-debug
