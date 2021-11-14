@@ -2,3 +2,11 @@
 /cmake-build-debug/
 imgui.ini
 .idea
+objects/.DS_Store
+objects/._VintageTV.obj
+objects/._untitled2.obj
+objects/._teapot.obj
+objects/._Suzanne.obj
+objects/._bunny.obj
+objects/._armadillo.obj
+objects/._.DS_Store
