@@ -12,10 +12,8 @@
 
 #include <vector>
 
-//imgui
-#include <imgui.h>
-#include <backends/imgui_impl_glfw.h>
-#include <backends/imgui_impl_vulkan.h>
+//keyboard input and glfw/vulkan
+#include "../utilities/kb_input.cpp"
 
 //stb
 #include "../../external/stb_image.h"
@@ -39,6 +37,17 @@ static void check_vk_result(VkResult err)
     if (err < 0)
         abort();
 }
+
+//helper structs
+struct ve_pipelineInfo{
+    VkPolygonMode flag;
+    VkPrimitiveTopology topology;
+    bool texEnabled;
+    std::string vertShader;
+    std::string fragShader;
+};
+
+//backend structs
 
 struct devices{
     VkPhysicalDevice physicalDevice;
@@ -68,7 +77,7 @@ struct SwapChainImage{
     VkImageView imageView;
 };
 
-struct DepthBufferImage{
+struct Image{
     VkImage image;
     VkImageView imageView;
     VkDeviceMemory imageMemory;
@@ -88,7 +97,9 @@ struct Sync{
 struct Descriptors{
     VkDescriptorSetLayout descriptorSetLayout;
     VkDescriptorSetLayout samplerSetLayout;
+    VkDescriptorSetLayout inputAttachSetLayout;
     VkPushConstantRange pushConstantRange; //describes the size of the data to be passed through
+    VkPushConstantRange IA_pushConstantRange; //describes the size of the data to be passed through the second subpass.
 
     VkBuffer* uniformBuffer;
     VkDeviceMemory* uniformBufferMemory;
@@ -99,20 +110,22 @@ struct Descriptors{
     VkDescriptorPool imGuiDescriptorPool;
     VkDescriptorPool descriptorPool;
     VkDescriptorPool samplerDescriptorPool;
+    VkDescriptorPool inputAttachDescriptorPool;
 
     VkDescriptorSet* descriptorSet;
     VkDescriptorSet* samplerDescriptorSet;
+    VkDescriptorSet* inputAttachmentDescriptorSets;
     int num_texture_descriptor_set;
 };
 
 struct Texture{
     VkImage textureImage;
-    VkDeviceMemory textureImageMemory;
     VkImageView textureImageView;
+    VkDeviceMemory textureImageMemory;
 
     VkImage normTextureImage;
-    VkDeviceMemory normTextureImageMemory;
     VkImageView normTextureImageView;
+    VkDeviceMemory normTextureImageMemory;
 };
 
 struct Ve_backend{
@@ -125,6 +138,10 @@ struct Ve_backend{
 
     VkPipelineLayout* pipelineLayout;
     VkPipeline* graphicsPipeline;
+
+    VkPipelineLayout inputAttachPipelineLayout;
+    VkPipeline inputAttachPipeline;
+
     uint32_t num_pipelines;
 
     VkRenderPass renderPass;
@@ -136,7 +153,8 @@ struct Ve_backend{
     //these are all the same size;
     //commandBuffer[1] will only ever output to swapChainFrameBuffer[1], which will only ever use swapChainImage[1]
     struct SwapChainImage* swapChainImages;
-    struct DepthBufferImage depthBufferImages;
+    struct Image* depthBufferImages;
+    struct Image* colorBufferImages;
     VkFramebuffer* swapChainFrameBuffers;
     VkCommandBuffer* commandBuffers;
 
@@ -149,6 +167,8 @@ struct Ve_backend{
     struct ImageInfo imageInfo;
     struct Pools pools;
     uint32_t num_swapchain_images;
+    uint32_t num_depthBuffer_images;
+    uint32_t num_colorBuffer_images;
 };
 
 #endif //VULKANENGINE2_VE_BACKEND_H

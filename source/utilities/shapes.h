@@ -27,6 +27,12 @@ struct PushObj{
     float isEnvMap = 0;
 };
 
+struct IA_PushObj{
+    float x_screen = 0.0f;
+    float fog_power = 1.0f;
+    float fog_shift = 0.0f;
+};
+
 struct MeshObject{
     char* name{};
     struct PushObj pObj;
@@ -111,21 +117,29 @@ static struct MeshObject wall (vec3 startPoint, vec3 endPoint, vec3 color, float
     vec3 diff = endPoint-startPoint;
     vec3 norm = normalize(cross(up, diff));
 
+    float lengthTex = clamp(length(diff),0.0f,1.0f);
+
     std::vector<Vertex> vertices = {
-            {(vec3){startPoint.x, startPoint.y + height,startPoint.z}  ,{norm.x, 0.0f, norm.z}, {color[0],color[1],color[2]}, {1.0f,0.0f}},
+            {(vec3){startPoint.x, startPoint.y + height,startPoint.z}  ,{norm.x, 0.0f, norm.z}, {color[0],color[1],color[2]}, {lengthTex,0.0f}},
             {(vec3){endPoint.x,endPoint.y + height,endPoint.z}  ,{norm.x,0.0f, norm.z}, {color[0],color[1],color[2]}, {0.0f,0.0f}},
             {(vec3){endPoint.x, endPoint.y,endPoint.z} , {norm.x,0.0f,norm.z},{color[0],color[1],color[2]}, {0.0f,1.0f}},
-            {(vec3){startPoint.x, startPoint.y,startPoint.z} ,  {norm.x,0.0f,norm.z},{color[0],color[1],color[2]}, {1.0f,1.0f}},
-            {(vec3){startPoint.x, startPoint.y + height,startPoint.z}  ,{-norm.x, 0.0f, -norm.z}, {color[0],color[1],color[2]}, {1.0f,0.0f}},
-            {(vec3){endPoint.x,endPoint.y + height,endPoint.z}  ,{-norm.x,0.0f, -norm.z}, {color[0],color[1],color[2]}, {0.0f,0.0f}},
-            {(vec3){endPoint.x, endPoint.y,endPoint.z} , {-norm.x,0.0f,-norm.z},{color[0],color[1],color[2]}, {0.0f,1.0f}},
-            {(vec3){startPoint.x, startPoint.y,startPoint.z} ,  {-norm.x,0.0f,-norm.z},{color[0],color[1],color[2]}, {1.0f,1.0f}}
+            {(vec3){startPoint.x, startPoint.y,startPoint.z} ,  {norm.x,0.0f,norm.z},{color[0],color[1],color[2]}, {lengthTex,1.0f}},
+            {(vec3){startPoint.x-norm.x*0.2f, startPoint.y + height,startPoint.z-norm.z*0.2f}  ,{-norm.x, 0.0f, -norm.z}, {color[0],color[1],color[2]}, {lengthTex,0.0f}},
+            {(vec3){endPoint.x-norm.x*0.2f,endPoint.y + height,endPoint.z-norm.z*0.2f}  ,{-norm.x,0.0f, -norm.z}, {color[0],color[1],color[2]}, {0.0f,0.0f}},
+            {(vec3){endPoint.x-norm.x*0.2f, endPoint.y,endPoint.z-norm.z*0.2f} , {-norm.x,0.0f,-norm.z},{color[0],color[1],color[2]}, {0.0f,1.0f}},
+            {(vec3){startPoint.x-norm.x*0.2f, startPoint.y,startPoint.z-norm.z*0.2f} ,  {-norm.x,0.0f,-norm.z},{color[0],color[1],color[2]}, {lengthTex,1.0f}},
+            {(vec3){startPoint.x, startPoint.y + height,startPoint.z}  ,{0.0f, 1.0f, 0.0f}, {color[0],color[1],color[2]}, {0.0f,0.2f}},
+            {(vec3){endPoint.x,endPoint.y + height,endPoint.z}  ,{0.0f, 1.0f, 0.0f}, {color[0],color[1],color[2]}, {0.0f,0.0f}},
+            {(vec3){endPoint.x-norm.x*0.2f,endPoint.y + height,endPoint.z-norm.z*0.2f}  ,{0.0f, 1.0f, 0.0f}, {color[0],color[1],color[2]}, {1.0f,0.0f}},
+            {(vec3){startPoint.x-norm.x*0.2f, startPoint.y + height,startPoint.z-norm.z*0.2f}  ,{0.0f, 1.0f, 0.0f}, {color[0],color[1],color[2]}, {1.0f,0.2f}},
     };
 
     std::vector<uint32_t> indices ={  1,0,2,
                                       2,0,3,
                                       5,6,4,
-                                      6,7,4  };
+                                      6,7,4,
+                                      9,10,8,
+                                      10,11,8 };
 
     wall_object.vertices = vertices;
     wall_object.indices = indices;
@@ -148,6 +162,7 @@ static struct MeshObject mapFromPath(struct MeshObject path, vec3 color, float s
 
     for(int i = 1; i < path.vertices.size(); i++)
     {
+
         struct MeshObject wall_obj = wall((vec3){path.vertices[i-1].position.x - 0.65f, 0.0f, -path.vertices[i-1].position.y - 0.75f} * size, (vec3){path.vertices[i].position.x - 0.65f, 0.0f, -path.vertices[i].position.y - 0.75f} * size, color, 2.0f);
 
         for(uint32_t indx : wall_obj.indices)
@@ -166,6 +181,14 @@ static struct MeshObject mapFromPath(struct MeshObject path, vec3 color, float s
     map.pipelineFlag = 0;
 
     return map;
+}
+
+static struct MeshObject fillInWalls(struct MeshObject map)
+{
+    //TODO: Fill in gaps between the walls with a flat plane.
+
+    struct MeshObject fillers;
+    return fillers;
 }
 
 static struct MeshObject cube( mat4 model, vec3 color)

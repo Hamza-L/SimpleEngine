@@ -5,7 +5,11 @@
 #ifndef VULKANENGINE2_VE_RENDERER_H
 #define VULKANENGINE2_VE_RENDERER_H
 
-#include "../utilities/kb_input.cpp"
+//imgui
+#include <imgui.h>
+#include <backends/imgui_impl_glfw.h>
+#include <backends/imgui_impl_vulkan.h>
+
 #include "../vulkan-backend/ve_backend.cpp"
 
 static float frameTime = 0;

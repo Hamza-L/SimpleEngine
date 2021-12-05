@@ -8,29 +8,54 @@
 void static key_callback(GLFWwindow *window, int key, int scancode, int action, int mods) {
     {
 
-        if (key == GLFW_KEY_UP && action == GLFW_PRESS){
+        if (key == GLFW_KEY_W && action == GLFW_PRESS){
             UP_PRESS = true;
-        } else if (key == GLFW_KEY_UP && action == GLFW_RELEASE) {
+        } else if(key == GLFW_KEY_W && action == GLFW_RELEASE){
             UP_PRESS = false;
         }
 
-        if (key == GLFW_KEY_DOWN && action == GLFW_PRESS){
+        if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS){
+            ESC = true;
+        } else if(key == GLFW_KEY_ESCAPE && action == GLFW_RELEASE){
+            ESC = false;
+        }
+
+        /*
+        if (key == GLFW_KEY_W && action == GLFW_RELEASE){
+            UP_PRESS_FLAG = true;
+            DOWN_FLAG = true;
+        }
+         */
+
+        if (key == GLFW_KEY_S && action == GLFW_PRESS){
             DOWN = true;
-        } else if (key == GLFW_KEY_DOWN && action == GLFW_RELEASE) {
+        } else if (key == GLFW_KEY_S && action == GLFW_RELEASE) {
             DOWN = false;
-        }
+        }/*
+        if (key == GLFW_KEY_S && action == GLFW_RELEASE){
+            UP_PRESS_FLAG = true;
+            DOWN_FLAG = true;
+        }*/
 
-        if (key == GLFW_KEY_RIGHT && action == GLFW_PRESS){
+        if (key == GLFW_KEY_D && action == GLFW_PRESS){
             RIGHT = true;
-        } else if (key == GLFW_KEY_RIGHT && action == GLFW_RELEASE) {
+        } else if (key == GLFW_KEY_D && action == GLFW_RELEASE) {
             RIGHT = false;
-        }
+        }/*
+        if (key == GLFW_KEY_D && action == GLFW_RELEASE){
+            LEFT_FLAG = true;
+            RIGHT_FLAG = true;
+        }*/
 
-        if (key == GLFW_KEY_LEFT && action == GLFW_PRESS){
+        if (key == GLFW_KEY_A && action == GLFW_PRESS){
             LEFT = true;
-        } else if (key == GLFW_KEY_LEFT && action == GLFW_RELEASE) {
+        } else if (key == GLFW_KEY_A && action == GLFW_RELEASE) {
             LEFT = false;
-        }
+        }/*
+        if (key == GLFW_KEY_A && action == GLFW_RELEASE){
+            LEFT_FLAG = true;
+            RIGHT_FLAG = true;
+        }*/
 
         if (key == GLFW_KEY_LEFT_SHIFT && action == GLFW_PRESS){
             SHIFT = true;
@@ -51,6 +76,7 @@ void static key_callback(GLFWwindow *window, int key, int scancode, int action, 
             ENTER = false;
             ENTER_FLAG = true;
         }
+
     }
 }
 

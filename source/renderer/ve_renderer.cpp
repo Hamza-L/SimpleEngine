@@ -13,7 +13,19 @@ static struct Lights light_list = {};
 
 static struct Gui gui = {};
 static bool arcballEnable = true;
-static bool showMap = false;
+static bool mapDrawer = true;
+
+static float x_pos_pressed;
+static float y_pos_pressed;
+static double currentPos_x, currentPos_y;
+static struct IA_PushObj slider = {};
+
+//player values
+static vec3 player_pos;
+static vec3 player_lookat;
+static vec3 player_speed;
+static bool isLastKeyRight;
+static bool isLastKeyUp;
 
 static void initGUI()
 {
@@ -40,7 +52,7 @@ static void initGUI()
         init_info.MinImageCount = 2;
         init_info.ImageCount = MAX_FRAME_DRAWS;
         init_info.CheckVkResultFn = check_vk_result;
-        init_info.Subpass = 0;
+        init_info.Subpass = 1; //In which subpass is the GUI Rendering happening.
         ImGui_ImplVulkan_Init(&init_info, vulkanBE.renderPass);
 
         //execute a gpu command to upload imgui font textures
@@ -86,6 +98,12 @@ static void imGuiParametersSetup() {
     ImGui::Begin("Simple Render Engine!");                          // Create a window called "Hello, world!" and append into it.
 
     //ImGui::SetWindowSize(ImVec2(350.0f,350.0f),0);
+    ImGui::Text("Fog Effect intensity.");               // Display some text (you can use a format strings too)
+    ImGui::SliderFloat("fog_pow", &slider.fog_power, 0.0f, 2.0f);
+
+    ImGui::Text("Fog Effect shift offset.");
+    ImGui::SliderFloat("fog_shift", &slider.fog_shift, 0.0f, 2.0f);
+
 
     ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
     ImGui::End();
@@ -113,18 +131,8 @@ static int create_texture(struct MeshObject* obj, const char* filename, const ch
     return textureImageLoc;
 }
 
-static void loadModels()
+static void initWallMapModel()
 {
-
-    struct MeshObject checkerBoard = checkerPlane(glm::rotate(GLM_MAT4_IDENTITY, glm::radians(-90.0f), glm::vec3(1.0f,0.0f,0.0f)),
-            40,
-            glm::vec3(0.4f,0.4f,0.4f),
-            glm::vec3(0.2f,0.2f,0.2f));
-    struct MeshObject sph = sphere(GLM_MAT4_IDENTITY, {1.0f,1.0f,1.0f}, 50);
-    struct MeshObject test = objImporter("assets/Helicopter/Seahawk.obj", {1.0f,0.8f,0.0f,1.0f});
-    sph.pObj.M = glm::scale(GLM_MAT4_IDENTITY, vec3(0.3f));
-
-
     struct MeshObject mapBG = {};
     std::vector<Vertex> vertices = {
             {(vec3){0.9f,-0.4f,0.0f}  ,{0.0f,0.0f,1.0f}, vec3(0.0f), {1.0f,0.0f}},
@@ -139,19 +147,36 @@ static void loadModels()
     mapBG.pObj.M = GLM_MAT4_IDENTITY;
     mapBG.vertices = vertices;
     mapBG.indices = indices;
+    object_list.push_back(mapBG);
+}
 
+static void loadModels()
+{
 
+    struct MeshObject checkerBoard = checkerPlane(glm::rotate(GLM_MAT4_IDENTITY, glm::radians(-90.0f), glm::vec3(1.0f,0.0f,0.0f)),
+            40,
+            glm::vec3(0.4f,0.4f,0.4f),
+            glm::vec3(0.2f,0.2f,0.2f));
+    struct MeshObject sph = sphere(GLM_MAT4_IDENTITY, {1.0f,1.0f,1.0f}, 50);
+    struct MeshObject test = objImporter("assets/Helicopter/Seahawk.obj", {0.9f,0.9f,0.9f,1.0f});
+    struct MeshObject teapot = objImporter("objects/teapot.obj", {1.0f,0.8f,0.0f,1.0f});
+
+    sph.pObj.M = glm::translate(GLM_MAT4_IDENTITY, vec3(0.0f,1.5f,0.0f));
     test.pObj.M = glm::scale(GLM_MAT4_IDENTITY, glm::vec3(0.05f));
-
     create_texture(&sph, (char*)"giraffe.jpg",(char*)"");
-    //create_texture(&test, (char*)"enhanced_moon.jpg", (char*)"enhanced_moon.png");
+    create_texture(&sph, (char*)"brick.jpg", (char*)"brickUV.jpg");
     checkerBoard.pipelineFlag = 0;
     //sph.pipelineFlag = 0;
 
     //add objects to the object list
     //object_list.push_back(wall1);
     object_list.push_back(checkerBoard);
-    object_list.push_back(mapBG);
+    //object_list.push_back(test);
+
+    if(mapDrawer)
+    {
+        initWallMapModel();
+    }
 }
 
 static void loadCameras()
@@ -161,7 +186,7 @@ static void loadCameras()
     struct Camera cam1 = {};
 
     cam1.projection = glm::perspective(glm::radians(75.0f), aspectRatio, 0.1f, 100.0f);
-    cam1.view = glm::lookAt(glm::vec3(-2.0f,7.0f,8.0f), glm::vec3(0.0f), glm::vec3(0.0f,1.0f,0.0f));
+    cam1.view = glm::lookAt(glm::vec3(-2.0f,1.5f,8.0f), glm::vec3(0.0f), glm::vec3(0.0f,1.0f,0.0f));
 
     //cam1.projection[1][1] *= -1; //we need to infer the y coordinate because vulkan
     camera_list.push_back(cam1);
@@ -428,6 +453,9 @@ static void updateCameraArcball(int indx)
         glm::vec4 temp = VInv * glm::vec4(getVectorFromMouse(xPosCurr,yPosCurr),0.0f);
         mouseCurr = glm::normalize(glm::vec3(temp.x,temp.y,temp.z));
 
+        //player_lookat.x = 2.0f*mouseCurr.x;
+        //player_lookat.y = 2.0f*mouseCurr.y;
+
         if(glm::length(glm::vec3(mouseCurr - mouseInit)) < 1E-05){
             //std::cout<<"do nothing"<<std::endl;
         } else {
@@ -470,17 +498,12 @@ static void updateCameraArcball(int indx)
     }
 
     float aspectRatio = (float)vulkanBE.imageInfo.extent.width/(float)vulkanBE.imageInfo.extent.height;
-    camera_list[indx].projection = glm::perspective(glm::radians(50.0f - scroll), aspectRatio, 0.1f, 100.0f);
+    camera_list[indx].projection = glm::perspective(glm::radians(80.0f - scroll), aspectRatio, 0.1f, 100.0f);
 }
 
-static void updateModel(int indx)
+static void updateWall()
 {
-    glm::mat4 VInv = glm::inverse(camera_list[indx].view);
-
-    if(arcballEnable)
-    {
-        //updateModelArcball(indx);
-    }
+    glm::mat4 VInv = glm::inverse(camera_list[0].view);
 
     if(MPRESS_L && MFLAG_L){
         MFLAG_L = false;
@@ -541,6 +564,10 @@ static void updateModel(int indx)
 
             if(path_list[0].vertices.size()>1){
                 struct MeshObject map = mapFromPath(path_list[0], (vec3){0.5f,0.5f,0.5f},  20.0f);
+                map.pipelineFlag = 0;
+                map.textureID = 1;
+                map.pObj.isTex = 1;
+                map.pObj.isNormTex = 1;
 
                 if(object_list.size() > 2)
                 {
@@ -559,12 +586,72 @@ static void updateModel(int indx)
     }
 }
 
+static void updateModel(int indx)
+{
+
+    if(arcballEnable)
+    {
+        //updateModelArcball(indx);
+    }
+
+    if(mapDrawer)
+    {
+        updateWall();
+    }
+
+}
+
 static void updateCamera(int indx)
 {
     if(arcballEnable)
     {
-        updateCameraArcball(indx);
+        //updateCameraArcball(indx);
     }
+
+    double t = glfwGetTime();
+
+    /*
+    if(RIGHT && RIGHT_FLAG) {
+        RIGHT_FLAG = false;
+        isLastKeyRight = true;
+    }
+
+    if(LEFT && LEFT_FLAG) {
+        LEFT_FLAG = false;
+        isLastKeyRight = false;
+    }
+
+    if(UP_PRESS && UP_PRESS_FLAG) {
+        UP_PRESS_FLAG = false;
+        isLastKeyUp = true;
+    }
+
+    if(DOWN && DOWN_FLAG) {
+        DOWN_FLAG = false;
+        isLastKeyUp = false;
+    }*/
+
+    double xPosInit,yPosInit;
+    glfwGetCursorPos(ve_window.window,&xPosInit,&yPosInit);
+
+    double delta_x = 0.002f * (xPosInit - currentPos_x);
+    double delta_y = 0.002f * (yPosInit - currentPos_y);
+
+    float x,y;
+    //x = 10.0f * (float)sin(t*0.7f);
+    //y = 10.0f * (float)cos(t*0.7f);
+    player_pos.x = player_pos.x + 0.004f*RIGHT - 0.004f*LEFT;
+    player_pos.z = player_pos.z + 0.004f*DOWN - 0.004f*UP_PRESS;
+
+    float move_speed = 0.002f;
+
+    mat4 viewMat = camera_list[indx].view;
+
+    camera_list[indx].view = glm::rotate(GLM_MAT4_IDENTITY, (float)delta_x, vec3(viewMat[1][0],viewMat[1][1],viewMat[1][2])) * camera_list[indx].view;
+    camera_list[indx].view = glm::rotate(GLM_MAT4_IDENTITY, (float)delta_y, vec3(1.0f,0.0f,0.0f)) * camera_list[indx].view;
+    camera_list[indx].view = glm::translate(GLM_MAT4_IDENTITY, vec3(move_speed * (LEFT - RIGHT), 0.0f, move_speed * (UP_PRESS - DOWN))) * camera_list[indx].view;
+    currentPos_x = xPosInit;
+    currentPos_y = yPosInit;
 }
 
 static void cleanUpRenderer()
@@ -601,12 +688,13 @@ static void recordCommand(uint32_t currentImage){
     renderPassBeginInfo.renderArea.extent = vulkanBE.imageInfo.extent; //size of region to run renderpass on.
 
     //assigns to each attachment. clears attachment[1] to cleavalues[1]
-    VkClearValue clearValues[2] = {}; //add depth attachment lear value
-    clearValues[0].color = {0.05f,0.05f,0.05f,1.0f};
-    clearValues[1].depthStencil.depth = 1.0f;
+    VkClearValue clearValues[3] = {}; //add depth attachment lear value
+    clearValues[0].color = {1.0f,0.0f,0.0f, 1.0f};
+    clearValues[1].color = {0.05f,0.05f,0.05f,1.0f};
+    clearValues[2].depthStencil.depth = 1.0f;
 
     renderPassBeginInfo.pClearValues = clearValues;
-    renderPassBeginInfo.clearValueCount = 2;
+    renderPassBeginInfo.clearValueCount = 3;
 
 
 
@@ -620,16 +708,10 @@ static void recordCommand(uint32_t currentImage){
         exit(1);
     }
 
+
     vkCmdBeginRenderPass(vulkanBE.commandBuffers[currentImage], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE); // all the commands will be primary
 
-        std::vector<struct MeshObject>* objectsToRender;
-        if(showMap)
-        {
-            objectsToRender = &object_list;
-        } else
-        {
-            objectsToRender = &path_list;
-        }
+
 
         for(auto & mesh : path_list)
         {
@@ -695,7 +777,16 @@ static void recordCommand(uint32_t currentImage){
             vkCmdDrawIndexed(vulkanBE.commandBuffers[currentImage], mesh.indices.size(), 1, 0, 0, 0);
         }
 
-    ImGui_ImplVulkan_RenderDrawData(gui.draw_data, vulkanBE.commandBuffers[currentImage]);
+        //start 2nd subpass
+        vkCmdNextSubpass(vulkanBE.commandBuffers[currentImage], VK_SUBPASS_CONTENTS_INLINE);
+
+        vkCmdBindPipeline(vulkanBE.commandBuffers[currentImage], VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanBE.inputAttachPipeline);
+        vkCmdPushConstants(vulkanBE.commandBuffers[currentImage], vulkanBE.inputAttachPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, vulkanBE.descriptors.IA_pushConstantRange.size, &slider);
+        vkCmdBindDescriptorSets(vulkanBE.commandBuffers[currentImage], VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanBE.inputAttachPipelineLayout, 0, 1, &vulkanBE.descriptors.inputAttachmentDescriptorSets[currentImage], 0, nullptr);
+
+        vkCmdDraw(vulkanBE.commandBuffers[currentImage], 3, 1, 0, 0);
+
+        ImGui_ImplVulkan_RenderDrawData(gui.draw_data, vulkanBE.commandBuffers[currentImage]);
 
     vkCmdEndRenderPass(vulkanBE.commandBuffers[currentImage]); // all the commands will be primary
 
@@ -774,7 +865,8 @@ static void run(){
     glfwSetMouseButtonCallback(ve_window.window, mouse_callback);
     glfwSetScrollCallback(ve_window.window, scroll_callback);
 
-    while(!glfwWindowShouldClose(ve_window.window)){
+    while(!glfwWindowShouldClose(ve_window.window) && !ESC){
+
         glfwPollEvents();
 
         //imgui new frame
@@ -791,8 +883,33 @@ static void run(){
         frameTime = now - lastTime;
         lastTime = now;
 
+        if(MPRESS_R)
+        {
+            if(MFLAG_R){
+                glfwSetCursorPos(ve_window.window, x_pos_pressed, y_pos_pressed);
+            }
+            MFLAG_R = false;
+            MPRESS_R_Release = true;
+            double xpos,ypos;
+            glfwGetCursorPos(ve_window.window, &xpos, &ypos);
+            x_pos_pressed = (float)xpos;
+            y_pos_pressed = (float)ypos;
+            //slider.x_screen = (float)xpos;
+
+            glfwSetInputMode(ve_window.window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            updateCamera(0);
+            //glfwSetInputMode(ve_window.window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+        } else {
+            glfwSetInputMode(ve_window.window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            if(MPRESS_R_Release){
+                glfwSetCursorPos(ve_window.window, vulkanBE.imageInfo.extent.width/2.0f, vulkanBE.imageInfo.extent.height/2.0f);
+            }
+            MPRESS_R_Release = false;
+        }
+
         updateModel(0);
-        updateCamera(0);
+
+
         //updateCameraModel(0, model);
 
         draw();
@@ -818,4 +935,6 @@ static void initEngine(){
         createIndexBuffer(&object_list[i]);
     }
     createUniformBuffers();
+    player_pos = vec3(0.0f,5.0f,8.0f);
+    player_lookat = vec3(0.0f,3.0f,3.0f);
 }

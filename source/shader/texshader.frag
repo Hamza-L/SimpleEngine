@@ -37,7 +37,7 @@ void main()
     }
 
     vec3 scatteredLight1 = texColour.xyz * diffuse1;
-    vec3 reflectedLight1 = vec3(1.0f,1.0f,1.0f) * specular1 * 0.5f;
+    vec3 reflectedLight1 = vec3(1.0f,1.0f,1.0f) * specular1 * 0.0f;
     vec3 ambientLight = vec3(0.1f,0.1f,0.1f) * 0.05f;
 
     outColor = vec4(min( ambientLight  + scatteredLight1 + reflectedLight1 , vec3(1,1,1)), 1.0);

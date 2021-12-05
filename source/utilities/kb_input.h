@@ -23,6 +23,8 @@ static bool COM = false;
 static float scroll = 0;
 static bool ENTER = false;
 static bool ENTER_FLAG = true;
+static bool ESC = false;
+static bool MPRESS_R_Release = true;
 
 //mouse events
 static bool MPRESS_R = false;
