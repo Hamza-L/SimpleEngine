@@ -13,7 +13,7 @@ static struct Lights light_list = {};
 
 static struct Gui gui = {};
 static bool arcballEnable = true;
-static bool mapDrawer = true;
+static bool mapDrawer = false;
 
 static float x_pos_pressed;
 static float y_pos_pressed;
@@ -171,7 +171,7 @@ static void loadModels()
     //add objects to the object list
     //object_list.push_back(wall1);
     object_list.push_back(checkerBoard);
-    //object_list.push_back(test);
+    object_list.push_back(test);
 
     if(mapDrawer)
     {

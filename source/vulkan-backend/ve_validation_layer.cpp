@@ -45,7 +45,7 @@ static void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT*
     createInfo->pfnUserCallback = debugCallback;
 }
 
-static void setupDebugMessenger(VkInstance instance){
+static void setupDebugMessenger(VkInstance *instance, VkDebugUtilsMessengerEXT *pDebugUtilsMessengerExtT) {
 
     if (!enableValidationLayers){
         return;
@@ -54,7 +54,7 @@ static void setupDebugMessenger(VkInstance instance){
     VkDebugUtilsMessengerCreateInfoEXT createInfo = {};
     populateDebugMessengerCreateInfo(&createInfo);
 
-    if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
+    if (CreateDebugUtilsMessengerEXT(*instance, &createInfo, nullptr, pDebugUtilsMessengerExtT) != VK_SUCCESS) {
         fprintf(stderr,"failed to set up debug messenger!");
     }
 }

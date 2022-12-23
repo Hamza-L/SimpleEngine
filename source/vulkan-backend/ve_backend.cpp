@@ -48,7 +48,7 @@ static void freeUpVulkanBE(){
     free(vulkanBE.swapChainImages);
 }
 
-static void getQueueFamilies(VkPhysicalDevice physicalDevice)
+static void getQueueFamilies(QueueFamilyIndices* queuefamilyIndicies, VkSurfaceKHR* surface, VkPhysicalDevice physicalDevice)
 {
 
     uint32_t queueFamilyCount = 0;
@@ -137,7 +137,7 @@ static int checkIfDeviceSuitable(VkPhysicalDevice physicalDevice)
     VkPhysicalDeviceFeatures deviceFeatures;
     vkGetPhysicalDeviceFeatures(physicalDevice, &deviceFeatures);
 
-    getQueueFamilies(physicalDevice);
+    getQueueFamilies(&vulkanBE.queueFamilyIndices, &vulkanBE.surface, physicalDevice);
 
 
     int queueSupported = vulkanBE.queueFamilyIndices.graphicsFamily >= 0 && vulkanBE.queueFamilyIndices.presentationFamily >= 0;
@@ -154,11 +154,11 @@ static int checkIfDeviceSuitable(VkPhysicalDevice physicalDevice)
     return queueSupported && swapchainSupported && deviceFeatures.samplerAnisotropy;
 }
 
-static void getPhysicalDevice()
+static void getPhysicalDevice(VkInstance *instance, VkPhysicalDevice *physicalDevice)
 {
     //enumerate physical device the VkInstance can access.
     uint32_t numDevice = 0;
-    vkEnumeratePhysicalDevices(vulkanBE.instance, &numDevice, nullptr);
+    vkEnumeratePhysicalDevices(*instance, &numDevice, nullptr);
 
     if (numDevice == 0){
         printf("can't find GPU that support vulkan instance!");
@@ -166,7 +166,7 @@ static void getPhysicalDevice()
 
     //get list of physical Devices
     VkPhysicalDevice deviceList[numDevice];
-    vkEnumeratePhysicalDevices(vulkanBE.instance, &numDevice, deviceList);
+    vkEnumeratePhysicalDevices(*instance, &numDevice, deviceList);
 
     VkPhysicalDeviceProperties deviceProperties;
 
@@ -175,7 +175,7 @@ static void getPhysicalDevice()
     for(int i = 0; i < numDevice; i++){
         if(checkIfDeviceSuitable(deviceList[i])){
             printf("Physical Device Used: %s\n", deviceProperties.deviceName);
-            vulkanBE.mainDevices.physicalDevice = deviceList[0];
+            *physicalDevice = deviceList[0];
         }
     }
 
@@ -208,7 +208,7 @@ static int checkInstanceExtensionSupport(const char ** checkExtensions, uint32_t
     return 1;
 }
 
-static void createInstance()
+static void createInstance(VkInstance* pInstance)
 {
 
     if (!checkValidationLayerSupport()) {
@@ -263,7 +263,7 @@ static void createInstance()
     }
 
     //create instance
-    VkResult result = vkCreateInstance(&createInfo,nullptr,&vulkanBE.instance);
+    VkResult result = vkCreateInstance(&createInfo,nullptr, pInstance);
     if(result != VK_SUCCESS){
         printf("Instance creation was unsuccessful");
     }
@@ -272,6 +272,7 @@ static void createInstance()
 static void createLogicalDevice()
 {
 
+    //TODO: pass paramters for device extention and features
     VkDeviceCreateInfo deviceCreateInfo = {};
     deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     deviceCreateInfo.enabledExtensionCount = num_device_extensions; //number of LOGICAL device extensions
@@ -284,7 +285,7 @@ static void createLogicalDevice()
     queueCreateInfo.queueFamilyIndex = vulkanBE.queueFamilyIndices.graphicsFamily;
     queueCreateInfo.queueCount = 1;
     float queuePriority = 1.0f;
-    queueCreateInfo.pQueuePriorities = &queuePriority; //if we have multiple queues running at the same time, which one has priority. 1 is highest and low is lowers.
+    queueCreateInfo.pQueuePriorities = &queuePriority; //if we have multiple queues running at the same time, which one has priority. 1 is highest and low is lower.
 
     if(vulkanBE.queueFamilyIndices.graphicsFamily != vulkanBE.queueFamilyIndices.presentationFamily)
     {
@@ -333,10 +334,10 @@ static void createLogicalDevice()
 
 }
 
-static void createSurface()
+static void createSurface(VkInstance *instance, GLFWwindow *pWindow, VkSurfaceKHR *pSurface)
 {
     //creates a surface create info struct, runs the surface create function and returns a VK_Result. It is essentially a wrapper function
-    VkResult result = glfwCreateWindowSurface(vulkanBE.instance, ve_window.window, nullptr, &vulkanBE.surface);
+    VkResult result = glfwCreateWindowSurface(*instance, pWindow, nullptr, pSurface);
     if (result != VK_SUCCESS)
     {
         fprintf(stderr, "Failed to create Surface!\n");
@@ -1937,10 +1938,10 @@ static void initBackend(){
 
     //no try catch here so be careful
     initWindow((char*)"Hello",1200,900);
-    createInstance();
-    setupDebugMessenger(vulkanBE.instance);
-    createSurface();
-    getPhysicalDevice();
+    createInstance(&vulkanBE.instance);
+    setupDebugMessenger(&vulkanBE.instance, &debugMessenger);
+    createSurface(&vulkanBE.instance, ve_window.window, &vulkanBE.surface);
+    getPhysicalDevice(&vulkanBE.instance, &vulkanBE.mainDevices.physicalDevice);
     createLogicalDevice();
     createSwapChain();
     createRenderPass();
